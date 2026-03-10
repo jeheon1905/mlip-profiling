@@ -25,6 +25,13 @@ mlip-profiling/
 Each model's source code is stored under `./packages/` and minimally modified to enable detailed profiling.  
 Modifications are marked with `[PROFILING]` comments.
 
+## Source Code Versions
+
+| Model | Commit | Original Repository |
+|-------|--------|---------------------|
+| MACE | [`667eee4`](https://github.com/ACEsuit/mace/commit/667eee4e58d23a38ff5a75122109ec2025809649) | https://github.com/ACEsuit/mace |
+| fairchem-core (eSEN) | [`8f74b9e`](https://github.com/facebookresearch/fairchem/commit/8f74b9ed7c44e3b8036b693b8cb201c85f7d3eda) | https://github.com/facebookresearch/fairchem |
+
 ## Analysis with Perfetto
 
 1. Run profiling script to generate Chrome trace file (`.json`)

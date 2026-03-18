@@ -15,11 +15,12 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 ```
 mlip-profiling/
 ├── README.md
-├── packages/                    # Source codes of each MLIP model
-│   ├── fairchem-core/          # eSEN (modified for profiling)
-│   └── mace/                   # MACE (modified for profiling)
-├── profile_esen.py             # eSEN profiling script
-└── profile_mace.py             # MACE profiling script
+├── structure_builders.py        # Structure generation utilities
+├── profile_esen.py              # eSEN profiling script
+├── profile_mace.py              # MACE profiling script
+└── packages/                    # Source codes of each MLIP model
+    ├── fairchem-core/           # eSEN (modified for profiling)
+    └── mace/                    # MACE (modified for profiling)
 ```
 
 Each model's source code is stored under `./packages/` and minimally modified to enable detailed profiling.  
@@ -41,6 +42,62 @@ Modifications are marked with `[PROFILING]` comments.
 
 ---
 
+## Structure Generation
+
+Generate atomic structures for profiling using `structure_builders.py`.
+
+### Benchmark Systems
+
+| System | Type | PBC | Purpose |
+|--------|------|-----|---------|
+| Cu FCC | Periodic bulk | True | Bulk/solid benchmark |
+| Water box | Molecular | True | Molecular/liquid benchmark |
+
+### Generate Structures
+
+```bash
+# Cu FCC supercells (periodic, for bulk benchmarks)
+python structure_builders.py \
+    --fcc-by-cells \
+    --fcc-cell-counts 2 3 4 5 6 7 8 9 10 \
+    --fcc-cell-element Cu \
+    --output-dir structures/
+
+# Water boxes (periodic, for molecular benchmarks)
+python structure_builders.py \
+    --water-box \
+    --water-molecules 10 50 100 250 500 1000 2000 \
+    --output-dir structures/
+```
+
+### Atom Counts Reference
+
+| FCC cells | Atoms (4×n³) |
+|-----------|--------------|
+| 2×2×2 | 32 |
+| 3×3×3 | 108 |
+| 4×4×4 | 256 |
+| 5×5×5 | 500 |
+| 6×6×6 | 864 |
+| 7×7×7 | 1372 |
+| 8×8×8 | 2048 |
+| 9×9×9 | 2916 |
+| 10×10×10 | 4000 |
+
+| Water molecules | Atoms (3×n) |
+|-----------------|-------------|
+| 10 | 30 |
+| 50 | 150 |
+| 100 | 300 |
+| 250 | 750 |
+| 500 | 1500 |
+| 1000 | 3000 |
+| 2000 | 6000 |
+
+Generated structures are saved as `.xyz` files and can be used with any profiling script.
+
+---
+
 ## eSEN
 
 ### Environment Setup
@@ -53,17 +110,23 @@ conda activate mlip-profiling-esen
 pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 
 # Install fairchem-core
-pip install -e ./packages/fairchem-core
+SETUPTOOLS_SCM_PRETEND_VERSION=2.15.0 pip install -e ./packages/fairchem-core
 ```
 
 ### Run Profiling
 
 ```bash
-python profile_with_trace.py \
+# Profile Cu FCC only
+python profile_esen.py \
     --device cuda \
-    --cluster-element Al \
-    --cluster-sizes 64 128 256 512 1024 2048 4096 8192 \
-    --output-dir profile_traces_clusters
+    --structure-files structures/Cu_fcc*.xyz \
+    --output-dir profile_traces_esen
+
+# Profile water boxes only
+python profile_esen.py \
+    --device cuda \
+    --structure-files structures/water_*.xyz \
+    --output-dir profile_traces_esen
 ```
 
 ---
@@ -107,11 +170,9 @@ pip install ./packages/mace
 ```bash
 python profile_mace.py \
     --model-path /path/to/mace_model.model \
-    --structure-path /path/to/structures.xyz \
+    --structure-files structures/*.xyz \
     --device cuda \
-    --output-dir profile_traces_mace \
-    --warmup-steps 5 \
-    --profile-steps 10
+    --output-dir profile_traces_mace
 ```
 
 Results are saved as Chrome trace format (`.json`) in `profile_traces_mace/` directory.  

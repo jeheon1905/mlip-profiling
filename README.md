@@ -2,22 +2,22 @@
 
 Performance profiling tools for Machine Learning Interatomic Potential (MLIP) models.
 
-## Compared Models
+## Supported Models
 
-- NequIP
-- MACE
-- Allegro
-- SevenNet
 - eSEN
+- MACE
+- SevenNet (not yet)
+- NequIP (not yet)
+- Allegro (not yet)
 
 ## Project Structure
 
 ```
 mlip-profiling/
 ├── README.md
+├── profile_mlip.py              # Unified profiling script
+├── profile_utils.py             # Shared profiling utilities
 ├── structure_builders.py        # Structure generation utilities
-├── profile_esen.py              # eSEN profiling script
-├── profile_mace.py              # MACE profiling script
 └── packages/                    # Source codes of each MLIP model
     ├── fairchem-core/           # eSEN (modified for profiling)
     └── mace/                    # MACE (modified for profiling)
@@ -116,17 +116,30 @@ SETUPTOOLS_SCM_PRETEND_VERSION=2.15.0 pip install -e ./packages/fairchem-core
 ### Run Profiling
 
 ```bash
-# Profile Cu FCC only
-python profile_esen.py \
+# Profile Cu FCC
+python profile_mlip.py \
+    --model-type esen \
+    --model-name esen-sm-conserving-all-omol \
     --device cuda \
     --structure-files structures/Cu_fcc*.xyz \
     --output-dir profile_traces_esen
 
-# Profile water boxes only
-python profile_esen.py \
+# Profile water boxes
+python profile_mlip.py \
+    --model-type esen \
+    --model-name esen-sm-conserving-all-omol \
     --device cuda \
     --structure-files structures/water_*.xyz \
     --output-dir profile_traces_esen
+
+# With InferenceSettings options
+python profile_mlip.py \
+    --model-type esen \
+    --model-name uma-s-1 \
+    --tf32 \
+    --compile \
+    --device cuda \
+    --structure-files structures/*.xyz
 ```
 
 ---
@@ -168,14 +181,15 @@ pip install ./packages/mace
 ### Run Profiling
 
 ```bash
-python profile_mace.py \
+python profile_mlip.py \
+    --model-type mace \
     --model-path /path/to/mace_model.model \
     --structure-files structures/*.xyz \
     --device cuda \
     --output-dir profile_traces_mace
 ```
 
-Results are saved as Chrome trace format (`.json`) in `profile_traces_mace/` directory.  
+Results are saved as Chrome trace format (`.json`) in the output directory.  
 Open with https://ui.perfetto.dev or `chrome://tracing`.
 
 ### Analysis using Perfetto

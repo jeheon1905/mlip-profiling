@@ -3,7 +3,8 @@ Unified profiling script for MLIP models with Chrome Trace export for Perfetto v
 
 Supported models:
   - eSEN (fairchem): uma-s-1, esen-sm-conserving-all-omol, etc.
-  - MACE: Any .pt model file
+  - MACE: Any .pt model file (supports e3nn, cueq, oeq backends)
+  - SevenNet: 7net-0, 7net-omni, 7net-mf-ompa, etc. (supports e3nn, cueq, flash, oeq backends)
 
 Usage:
     # eSEN model (by name)
@@ -12,6 +13,10 @@ Usage:
 
     # MACE model (by path)
     python profile_mlip.py --model-type mace --model-path model.pt \
+        --structure-files structures/*.xyz
+
+    # SevenNet model (by name)
+    python profile_mlip.py --model-type sevenn --model-name 7net-0 \
         --structure-files structures/*.xyz
 
 After running:
@@ -196,7 +201,13 @@ class ESENAdapter(ModelAdapter):
 # =============================================================================
 
 class MACEAdapter(ModelAdapter):
-    """Adapter for MACE models."""
+    """Adapter for MACE models.
+    
+    Supports multiple tensor product backends:
+      - e3nn (default): Standard e3nn backend
+      - cueq: cuEquivariance (NVIDIA GPU acceleration)
+      - oeq: OpenEquivariance
+    """
     
     TRACKED_OPERATIONS = [
         # Top-level profiling
@@ -219,6 +230,8 @@ class MACEAdapter(ModelAdapter):
         "MACE::Interaction::skip_tp",
     ]
     
+    AVAILABLE_BACKENDS = ["e3nn", "cueq", "oeq"]
+    
     def __init__(self):
         self.model = None
         self.model_path = None
@@ -226,19 +239,32 @@ class MACEAdapter(ModelAdapter):
         self.z_table = None
         self.cutoff = None
         self.heads = None
+        self.backend = None
     
     def load(
         self,
         model_path: str,
         device: str,
+        backend: str = "e3nn",
         **kwargs,
     ) -> None:
         from mace.tools import AtomicNumberTable
         
         self.model_path = model_path
         self.device = device
+        self.backend = backend
         
         self.model = torch.load(model_path, map_location=device)
+        
+        # Apply backend conversion if needed
+        if backend == "cueq":
+            from mace.cli.convert_e3nn_cueq import run as run_e3nn_to_cueq
+            self.model = run_e3nn_to_cueq(self.model, device=device)
+        elif backend == "oeq":
+            from mace.cli.convert_e3nn_oeq import run as run_e3nn_to_oeq
+            self.model = run_e3nn_to_oeq(self.model, device=device)
+        
+        self.model.to(device)
         self.model.eval()
         
         self.z_table = AtomicNumberTable([int(z) for z in self.model.atomic_numbers])
@@ -278,12 +304,203 @@ class MACEAdapter(ModelAdapter):
             "type": "mace",
             "path": str(self.model_path),
             "cutoff": self.cutoff,
+            "backend": self.backend,
             "heads": self.heads,
             "num_elements": len(self.z_table) if self.z_table else None,
         }
     
     def set_profiling_enabled(self, enabled: bool) -> None:
         from mace.modules.profiling import set_profiling_enabled
+        set_profiling_enabled(enabled)
+
+
+# =============================================================================
+# SevenNet Adapter
+# =============================================================================
+
+class SevenNetAdapter(ModelAdapter):
+    """Adapter for SevenNet models.
+    
+    SevenNet is a scalable E(3)-equivariant GNN-based MLIP from KAIST.
+    Supports multiple tensor product accelerators:
+      - e3nn (default): Standard e3nn backend
+      - cueq: cuEquivariance (NVIDIA GPU acceleration)
+      - flash: FlashTP (fast tensor product)
+      - oeq: OpenEquivariance
+    """
+    
+    TRACKED_OPERATIONS = [
+        # Top-level profiling
+        "forward",
+        "generate_graph",
+        # Input processing
+        "SevenNet::edge_embedding",
+        "SevenNet::onehot_idx_to_onehot",
+        "SevenNet::onehot_to_feature_x",
+        # Interaction blocks (5 layers for 7net-0)
+        # Layer 0
+        "SevenNet::0_self_connection_intro",
+        "SevenNet::0_self_interaction_1",
+        "SevenNet::0_convolution",
+        "SevenNet::0_self_interaction_2",
+        "SevenNet::0_self_connection_outro",
+        "SevenNet::0_equivariant_gate",
+        # Layer 1
+        "SevenNet::1_self_connection_intro",
+        "SevenNet::1_self_interaction_1",
+        "SevenNet::1_convolution",
+        "SevenNet::1_self_interaction_2",
+        "SevenNet::1_self_connection_outro",
+        "SevenNet::1_equivariant_gate",
+        # Layer 2
+        "SevenNet::2_self_connection_intro",
+        "SevenNet::2_self_interaction_1",
+        "SevenNet::2_convolution",
+        "SevenNet::2_self_interaction_2",
+        "SevenNet::2_self_connection_outro",
+        "SevenNet::2_equivariant_gate",
+        # Layer 3
+        "SevenNet::3_self_connection_intro",
+        "SevenNet::3_self_interaction_1",
+        "SevenNet::3_convolution",
+        "SevenNet::3_self_interaction_2",
+        "SevenNet::3_self_connection_outro",
+        "SevenNet::3_equivariant_gate",
+        # Layer 4
+        "SevenNet::4_self_connection_intro",
+        "SevenNet::4_self_interaction_1",
+        "SevenNet::4_convolution",
+        "SevenNet::4_self_interaction_2",
+        "SevenNet::4_self_connection_outro",
+        "SevenNet::4_equivariant_gate",
+        # Output blocks
+        "SevenNet::reduce_input_to_hidden",
+        "SevenNet::reduce_hidden_to_energy",
+        "SevenNet::rescale_atomic_energy",
+        "SevenNet::reduce_total_enegy",
+        "SevenNet::force_output",
+    ]
+    
+    AVAILABLE_BACKENDS = ["e3nn", "cueq", "flash", "oeq"]
+    
+    AVAILABLE_MODELS = [
+        "7net-0",
+        "7net-omni",
+        "7net-mf-ompa",
+        "7net-omat",
+        "7net-l3i5",
+    ]
+    
+    def __init__(self):
+        self.model = None
+        self.model_name = None
+        self.model_path = None
+        self.device = None
+        self.cutoff = None
+        self.type_map = None
+        self.modal = None
+        self.backend = None
+        self._config = None
+    
+    def load(
+        self,
+        device: str,
+        model_name: str = None,
+        model_path: str = None,
+        backend: str = "e3nn",
+        modal: str = None,
+        **kwargs,
+    ) -> None:
+        import sevenn.util as util
+        
+        self.device = device
+        self.backend = backend
+        self.modal = modal
+        
+        enable_cueq = (backend == "cueq")
+        enable_flash = (backend == "flash")
+        enable_oeq = (backend == "oeq")
+        
+        if model_name:
+            self.model_name = model_name
+            cp = util.load_checkpoint(model_name)
+        elif model_path:
+            self.model_path = model_path
+            cp = util.load_checkpoint(model_path)
+        else:
+            raise ValueError("Either model_name or model_path must be provided")
+        
+        self._config = cp.config
+        self.model = cp.build_model(
+            enable_cueq=enable_cueq,
+            enable_flash=enable_flash,
+            enable_oeq=enable_oeq,
+        )
+        self.model.set_is_batch_data(False)
+        self.model.to(device)
+        self.model.eval()
+        
+        self.type_map = self.model.type_map
+        self.cutoff = self.model.cutoff
+        
+        # Handle modal for multi-fidelity models
+        if self.model.modal_map:
+            if not modal:
+                available = list(self.model.modal_map.keys())
+                raise ValueError(f"Modal required for this model. Available: {available}")
+            if modal not in self.model.modal_map:
+                available = list(self.model.modal_map.keys())
+                raise ValueError(f"Unknown modal '{modal}'. Available: {available}")
+    
+    def run_inference(self, atoms: Atoms) -> Any:
+        import sevenn._keys as KEY
+        from sevenn.atom_graph_data import AtomGraphData
+        from sevenn.train.dataload import unlabeled_atoms_to_graph
+        
+        # Graph generation (CPU)
+        with record_function("generate_graph"):
+            graph_dict = unlabeled_atoms_to_graph(atoms, self.cutoff)
+            data = AtomGraphData.from_numpy_dict(graph_dict)
+            if self.modal:
+                data[KEY.DATA_MODALITY] = self.modal
+            data.to(self.device)
+        
+        # Model forward
+        with record_function("forward"):
+            output = self.model(data)
+        
+        return output
+    
+    @property
+    def tracked_operations(self) -> list[str]:
+        return self.TRACKED_OPERATIONS
+    
+    @property
+    def model_info(self) -> dict:
+        info = {
+            "type": "sevenn",
+            "name": self.model_name,
+            "path": str(self.model_path) if self.model_path else None,
+            "cutoff": self.cutoff,
+            "backend": self.backend,
+            "num_elements": len(self.type_map) if self.type_map else None,
+        }
+        
+        if self._config:
+            info.update({
+                "channel": self._config.get("channel"),
+                "lmax": self._config.get("lmax"),
+                "num_convolution_layer": self._config.get("num_convolution_layer"),
+                "is_parity": self._config.get("is_parity"),
+            })
+        
+        if self.modal:
+            info["modal"] = self.modal
+        
+        return info
+    
+    def set_profiling_enabled(self, enabled: bool) -> None:
+        from sevenn.nn.profiling import set_profiling_enabled
         set_profiling_enabled(enabled)
 
 
@@ -296,6 +513,7 @@ def get_adapter(model_type: str) -> ModelAdapter:
     adapters = {
         "esen": ESENAdapter,
         "mace": MACEAdapter,
+        "sevenn": SevenNetAdapter,
     }
     
     if model_type not in adapters:
@@ -498,6 +716,22 @@ Examples:
     python profile_mlip.py --model-type mace --model-path mace_model.pt \\
         --structure-files water_*.xyz
 
+    # MACE with cuEquivariance backend
+    python profile_mlip.py --model-type mace --model-path mace_model.pt --backend cueq \\
+        --structure-files water_*.xyz
+
+    # SevenNet model (pretrained)
+    python profile_mlip.py --model-type sevenn --model-name 7net-0 \\
+        --structure-files water_*.xyz
+
+    # SevenNet with cuEquivariance backend
+    python profile_mlip.py --model-type sevenn --model-name 7net-0 --backend cueq \\
+        --structure-files water_*.xyz
+
+    # SevenNet multi-fidelity model with modal selection
+    python profile_mlip.py --model-type sevenn --model-name 7net-mf-ompa --modal mpa \\
+        --structure-files water_*.xyz
+
     # Custom timing settings
     python profile_mlip.py --model-type esen --model-name uma-s-1 \\
         --structure-files *.xyz --timeit-number 20 --timeit-repeat 5
@@ -515,12 +749,12 @@ After profiling:
     
     # Model selection
     parser.add_argument("--model-type", type=str, required=True,
-                        choices=["esen", "mace"],
+                        choices=["esen", "mace", "sevenn"],
                         help="Type of model to profile")
     parser.add_argument("--model-name", type=str,
-                        help="Model name for eSEN (e.g., esen-sm-conserving-all-omol)")
+                        help="Model name for eSEN/SevenNet (e.g., esen-sm-conserving-all-omol, 7net-0)")
     parser.add_argument("--model-path", type=str,
-                        help="Path to model file for MACE")
+                        help="Path to model file for MACE/SevenNet checkpoint")
     
     # Device and output
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
@@ -548,6 +782,16 @@ After profiling:
     parser.add_argument("--external-graph-gen", action="store_true",
                         help="Use external graph generation for eSEN (default: False)")
     
+    # MACE/SevenNet backend options
+    parser.add_argument("--backend", type=str, default="e3nn",
+                        choices=["e3nn", "cueq", "flash", "oeq"],
+                        help="Tensor product backend for MACE/SevenNet (default: e3nn). "
+                             "Note: 'flash' is only supported by SevenNet.")
+    
+    # SevenNet-specific options
+    parser.add_argument("--modal", type=str, default=None,
+                        help="Modal (fidelity) for SevenNet multi-modal models (e.g., mpa, omat24)")
+    
     # Structure files
     parser.add_argument("--structure-files", type=str, nargs="+", required=True,
                         help="Paths to structure files (xyz, cif, etc.)")
@@ -559,6 +803,10 @@ After profiling:
         parser.error("--model-name required for eSEN models")
     if args.model_type == "mace" and not args.model_path:
         parser.error("--model-path required for MACE models")
+    if args.model_type == "mace" and args.backend == "flash":
+        parser.error("--backend flash is not supported by MACE. Use e3nn, cueq, or oeq.")
+    if args.model_type == "sevenn" and not (args.model_name or args.model_path):
+        parser.error("--model-name or --model-path required for SevenNet models")
     
     if args.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but torch.cuda.is_available() is False")
@@ -595,6 +843,15 @@ After profiling:
         adapter.load(
             model_path=args.model_path,
             device=args.device,
+            backend=args.backend,
+        )
+    elif args.model_type == "sevenn":
+        adapter.load(
+            model_name=args.model_name,
+            model_path=args.model_path,
+            device=args.device,
+            backend=args.backend,
+            modal=args.modal,
         )
     
     # Run profiling

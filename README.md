@@ -6,7 +6,7 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 
 - eSEN
 - MACE
-- SevenNet (not yet)
+- SevenNet
 - NequIP (not yet)
 - Allegro (not yet)
 
@@ -20,7 +20,8 @@ mlip-profiling/
 ├── structure_builders.py        # Structure generation utilities
 └── packages/                    # Source codes of each MLIP model
     ├── fairchem-core/           # eSEN (modified for profiling)
-    └── mace/                    # MACE (modified for profiling)
+    ├── mace/                    # MACE (modified for profiling)
+    └── sevenn/                  # SevenNet
 ```
 
 Each model's source code is stored under `./packages/` and minimally modified to enable detailed profiling.  
@@ -32,6 +33,10 @@ Modifications are marked with `[PROFILING]` comments.
 |-------|--------|---------------------|
 | MACE | [`667eee4`](https://github.com/ACEsuit/mace/commit/667eee4e58d23a38ff5a75122109ec2025809649) | https://github.com/ACEsuit/mace |
 | fairchem-core (eSEN) | [`8f74b9e`](https://github.com/facebookresearch/fairchem/commit/8f74b9ed7c44e3b8036b693b8cb201c85f7d3eda) | https://github.com/facebookresearch/fairchem |
+| SevenNet | [`95c811f`](https://github.com/MDIL-SNU/SevenNet/commit/95c811f56e64ec0a72f315e4b50ddca5adfa0667) | https://github.com/MDIL-SNU/SevenNet |
+
+> **Note**: Source code has been minimally modified for profiling. All modifications are marked with `[PROFILING]` comments.
+
 
 ## Analysis with Perfetto
 
@@ -148,22 +153,65 @@ python profile_mlip.py \
 
 ### Source Code Modifications
 
-MACE source code (`./packages/mace/`) has been modified to support detailed profiling:
+MACE source code (`./packages/mace/`) has been modified to support detailed profiling.
+All modifications are marked with `[PROFILING]` comments in the source code.
 
-- **New file**: `mace/modules/profiling.py` - Profiling utilities
-- **Modified**: `mace/modules/models.py` - Added profiling hooks to `MACE.forward()`
-- **Modified**: `mace/modules/blocks.py` - Added profiling hooks to `InteractionBlock` and `ProductBasisBlock`
+**New file: `mace/modules/profiling.py`**
+- `set_profiling_enabled(bool)` - Enable/disable profiling globally
+- `is_profiling_enabled()` - Check profiling status
+- `record_function_if_enabled(name)` - Conditional record_function wrapper
+- `ProfilerContext` - Context manager for standalone profiling
 
-Traced operations:
-- `MACE::prepare_graph`
-- `MACE::atomic_energies`
-- `MACE::embeddings`
-- `MACE::interaction_0`, `MACE::interaction_1`, ...
-- `MACE::product_0`, `MACE::product_1`, ...
-- `MACE::readouts`
-- `MACE::get_outputs`
-- `MACE::Interaction::skip_tp`, `linear_up`, `conv_weights`, `message_passing`
-- `MACE::SymmetricContraction`
+**Modified: `mace/modules/models.py`** (MACE.forward method)
+```python
+# Line 293: Graph preparation
+with record_function_if_enabled("MACE::prepare_graph"):
+    ...
+
+# Line 316: Atomic energies computation
+with record_function_if_enabled("MACE::atomic_energies"):
+    ...
+
+# Line 328: Node/edge embeddings
+with record_function_if_enabled("MACE::embeddings"):
+    ...
+
+# Line 379, 393: Interaction and product blocks (per layer)
+with record_function_if_enabled(f"MACE::interaction_{i}"):
+    ...
+with record_function_if_enabled(f"MACE::product_{i}"):
+    ...
+
+# Line 400: Readout layers
+with record_function_if_enabled("MACE::readouts"):
+    ...
+
+# Line 416: Final output computation
+with record_function_if_enabled("MACE::get_outputs"):
+    ...
+```
+
+**Modified: `mace/modules/blocks.py`** (Block-level profiling)
+```python
+# Line 507: ProductBasisBlock
+with record_function_if_enabled("MACE::ProductBasis"):
+    ...
+
+# Line 526: SymmetricContraction
+with record_function_if_enabled("MACE::SymmetricContraction"):
+    ...
+
+# Line 807-823: InteractionBlock internals
+with record_function_if_enabled("MACE::Interaction::forward"):
+    with record_function_if_enabled("MACE::Interaction::skip_tp"):
+        ...
+    with record_function_if_enabled("MACE::Interaction::linear_up"):
+        ...
+    with record_function_if_enabled("MACE::Interaction::conv_weights"):
+        ...
+    with record_function_if_enabled("MACE::Interaction::message_passing"):
+        ...
+```
 
 ### Environment Setup
 
@@ -178,15 +226,42 @@ pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 pip install ./packages/mace
 ```
 
+### Accelerator Backends (Optional)
+
+MACE supports tensor product accelerators for improved performance:
+
+```bash
+# cuEquivariance (NVIDIA GPU acceleration) - Recommended for NVIDIA GPUs
+pip install cuequivariance-torch
+
+# OpenEquivariance (open-source acceleration)
+pip install openequivariance
+```
+
+| Backend | Flag | Description |
+|---------|------|-------------|
+| e3nn | `--backend e3nn` | Standard e3nn (default) |
+| cuEquivariance | `--backend cueq` | NVIDIA GPU-accelerated tensor products |
+| OpenEquivariance | `--backend oeq` | Open-source equivariant acceleration |
+
 ### Run Profiling
 
 ```bash
+# Basic profiling
 python profile_mlip.py \
     --model-type mace \
     --model-path /path/to/mace_model.model \
     --structure-files structures/*.xyz \
     --device cuda \
     --output-dir profile_traces_mace
+
+# With cuEquivariance backend
+python profile_mlip.py \
+    --model-type mace \
+    --model-path /path/to/mace_model.model \
+    --backend cueq \
+    --structure-files structures/*.xyz \
+    --device cuda
 ```
 
 Results are saved as Chrome trace format (`.json`) in the output directory.  
@@ -195,5 +270,114 @@ Open with https://ui.perfetto.dev or `chrome://tracing`.
 ### Analysis using Perfetto
 
 ...
+
+---
+
+## SevenNet
+
+SevenNet is a scalable E(3)-equivariant GNN-based MLIP from KAIST (MDIL-SNU).
+
+### Source Code Modifications
+
+SevenNet source code (`./packages/sevenn/`) has been modified to support detailed profiling:
+
+- **New file**: `sevenn/nn/profiling.py` - Profiling utilities
+- **Modified**: `sevenn/nn/sequential.py` - Added profiling hooks to `AtomGraphSequential.forward()`
+
+Traced operations (per layer):
+- `SevenNet::edge_embedding` - Radial basis and spherical harmonics
+- `SevenNet::onehot_idx_to_onehot` - One-hot encoding
+- `SevenNet::onehot_to_feature_x` - Initial node features
+- `SevenNet::{i}_self_connection_intro` - Self-connection intro
+- `SevenNet::{i}_self_interaction_1` - Linear transformation 1
+- `SevenNet::{i}_convolution` - **Main tensor product convolution**
+- `SevenNet::{i}_self_interaction_2` - Linear transformation 2
+- `SevenNet::{i}_self_connection_outro` - Self-connection outro
+- `SevenNet::{i}_equivariant_gate` - Equivariant gate activation
+- `SevenNet::reduce_input_to_hidden` - Reduce to hidden
+- `SevenNet::reduce_hidden_to_energy` - Reduce to energy
+- `SevenNet::rescale_atomic_energy` - Shift/scale
+- `SevenNet::force_output` - Force computation (autograd)
+
+### Environment Setup
+
+```bash
+conda create -n mlip-profiling-sevenn python=3.10 -y
+conda activate mlip-profiling-sevenn
+
+# Install PyTorch (CUDA 12.6)
+pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
+
+# Install SevenNet
+pip install ./packages/sevenn
+```
+
+### Accelerator Backends (Optional)
+
+SevenNet supports multiple tensor product accelerators. Install any of the following as needed:
+
+```bash
+# cuEquivariance (NVIDIA GPU acceleration) - Recommended for NVIDIA GPUs
+pip install cuequivariance-torch
+
+# FlashTP (fast tensor product)
+pip install flashTP-e3nn
+
+# OpenEquivariance (open-source acceleration)
+pip install openequivariance
+```
+
+> **Note**: All backends can be installed simultaneously without conflicts. SevenNet checks availability at runtime. However, only **one backend can be active** at a time during profiling.
+
+| Backend | Flag | Description |
+|---------|------|-------------|
+| e3nn | `--backend e3nn` | Standard e3nn (default) |
+| cuEquivariance | `--backend cueq` | NVIDIA GPU-accelerated tensor products |
+| FlashTP | `--backend flash` | Fast tensor product implementation |
+| OpenEquivariance | `--backend oeq` | Open-source equivariant acceleration |
+
+### Pretrained Models
+
+Available pretrained models:
+- `7net-0` - Base model
+- `7net-omni` - Multi-modal universal potential
+- `7net-mf-ompa` - Multi-fidelity model (requires `--modal` option)
+- `7net-omat` - OMat24-trained model
+- `7net-l3i5` - Higher angular momentum model
+
+### Run Profiling
+
+```bash
+# Basic profiling with 7net-0
+python profile_mlip.py \
+    --model-type sevenn \
+    --model-name 7net-0 \
+    --structure-files structures/*.xyz \
+    --device cuda \
+    --output-dir profile_traces_sevenn
+
+# With cuEquivariance backend
+python profile_mlip.py \
+    --model-type sevenn \
+    --model-name 7net-0 \
+    --backend cueq \
+    --structure-files structures/*.xyz \
+    --device cuda
+
+# Multi-fidelity model (modal required)
+python profile_mlip.py \
+    --model-type sevenn \
+    --model-name 7net-mf-ompa \
+    --modal mpa \
+    --structure-files structures/*.xyz \
+    --device cuda
+
+# Using a local checkpoint file
+python profile_mlip.py \
+    --model-type sevenn \
+    --model-path /path/to/checkpoint.pth \
+    --structure-files structures/*.xyz \
+    --device cuda
+```
 
 

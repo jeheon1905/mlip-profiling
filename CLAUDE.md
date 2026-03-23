@@ -17,7 +17,8 @@ mlip-profiling/
 ├── CLAUDE.md
 └── packages/              # MLIP model source codes (modified for profiling)
     ├── fairchem-core/     # eSEN models (fairchem v2.15.0)
-    └── mace/              # MACE models
+    ├── mace/              # MACE models
+    └── sevenn/            # SevenNet models
 ```
 
 ## Supported Models
@@ -26,6 +27,7 @@ mlip-profiling/
 |-------|---------------|---------------|
 | eSEN (fairchem) | `ESENAdapter` | `pretrained_mlip.get_predict_unit(model_name)` |
 | MACE | `MACEAdapter` | `torch.load(model_path)` |
+| SevenNet | `SevenNetAdapter` | `util.load_checkpoint(model_name_or_path)` |
 
 ## Key Components
 
@@ -33,6 +35,7 @@ mlip-profiling/
 - **ModelAdapter**: Abstract base class for model adapters
 - **ESENAdapter**: fairchem/eSEN model adapter
 - **MACEAdapter**: MACE model adapter (direct inference, no ASE calculator)
+- **SevenNetAdapter**: SevenNet model adapter with backend options
 - **run_profiling()**: Main profiling loop with PyTorch Profiler
 
 ### profile_utils.py
@@ -56,6 +59,22 @@ python profile_mlip.py --model-type esen --model-name esen-sm-conserving-all-omo
 # MACE model  
 python profile_mlip.py --model-type mace --model-path model.pt \
     --structure-files structures/*.xyz --device cuda
+
+# MACE with cuEquivariance backend
+python profile_mlip.py --model-type mace --model-path model.pt --backend cueq \
+    --structure-files structures/*.xyz --device cuda
+
+# SevenNet model (pretrained)
+python profile_mlip.py --model-type sevenn --model-name 7net-0 \
+    --structure-files structures/*.xyz --device cuda
+
+# SevenNet with cuEquivariance backend
+python profile_mlip.py --model-type sevenn --model-name 7net-0 --backend cueq \
+    --structure-files structures/*.xyz --device cuda
+
+# SevenNet multi-fidelity model
+python profile_mlip.py --model-type sevenn --model-name 7net-mf-ompa --modal mpa \
+    --structure-files structures/*.xyz --device cuda
 ```
 
 ## Environment Setup
@@ -70,6 +89,18 @@ SETUPTOOLS_SCM_PRETEND_VERSION=2.15.0 pip install -e ./packages/fairchem-core
 conda create -n mlip-profiling-mace python=3.10 -y
 pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 pip install ./packages/mace
+# Optional accelerators:
+# pip install cuequivariance-torch  # for --backend cueq
+# pip install openequivariance      # for --backend oeq
+
+# SevenNet environment
+conda create -n mlip-profiling-sevenn python=3.10 -y
+pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
+pip install ./packages/sevenn
+# Optional accelerators:
+# pip install cuequivariance-torch  # for --backend cueq
+# pip install flashTP-e3nn          # for --backend flash
+# pip install openequivariance      # for --backend oeq
 ```
 
 ## Profiling Methodology
@@ -86,8 +117,18 @@ Following fairchem's `uma_speed_benchmark.py` methodology:
 |-------|-----------------|----------|
 | eSEN | GPU (nvalchemiops) | Model forward() internal |
 | MACE | CPU (matscipy) | Data preparation |
+| SevenNet | CPU (ase/numpy) | Data preparation |
 
-Both include graph generation in each inference for fair comparison.
+All models include graph generation in each inference for fair comparison.
+
+## Accelerator Backends (MACE/SevenNet)
+
+| Backend | Flag | Description | Required Package | MACE | SevenNet |
+|---------|------|-------------|------------------|------|----------|
+| e3nn | `--backend e3nn` | Standard e3nn (default) | Built-in | ✓ | ✓ |
+| cuEquivariance | `--backend cueq` | NVIDIA GPU-accelerated tensor products | `cuequivariance-torch` | ✓ | ✓ |
+| FlashTP | `--backend flash` | Fast tensor product implementation | `flashTP-e3nn` | ✗ | ✓ |
+| OpenEquivariance | `--backend oeq` | Open-source equivariant acceleration | `openequivariance` | ✓ | ✓ |
 
 ## Adding New Models
 
@@ -103,7 +144,7 @@ Both include graph generation in each inference for fair comparison.
 ## Code Conventions
 
 - Use `record_function()` for profiling tags
-- Prefix model-specific operations: `MACE::`, `eSEN::`, etc.
+- Prefix model-specific operations: `MACE::`, `eSEN::`, `SevenNet::`, etc.
 - Follow fairchem naming for shared operations: `forward`, `generate_graph`
 
 ## Output Files

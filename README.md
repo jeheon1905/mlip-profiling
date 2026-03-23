@@ -320,11 +320,13 @@ SevenNet supports multiple tensor product accelerators. Install any of the follo
 # cuEquivariance (NVIDIA GPU acceleration) - Recommended for NVIDIA GPUs
 pip install cuequivariance-torch
 
-# FlashTP (fast tensor product)
-pip install flashTP-e3nn
-
 # OpenEquivariance (open-source acceleration)
 pip install openequivariance
+
+# FlashTP (build from source)
+git clone https://github.com/SNU-ARC/flashTP.git && cd flashTP
+pip install -r requirements.txt
+CUDA_ARCH_LIST="80;90" pip install . --no-build-isolation
 ```
 
 > **Note**: All backends can be installed simultaneously without conflicts. SevenNet checks availability at runtime. However, only **one backend can be active** at a time during profiling.

@@ -99,8 +99,11 @@ pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 pip install ./packages/sevenn
 # Optional accelerators:
 # pip install cuequivariance-torch  # for --backend cueq
-# pip install flashTP-e3nn          # for --backend flash
 # pip install openequivariance      # for --backend oeq
+# FlashTP (build from source):
+#   git clone https://github.com/SNU-ARC/flashTP.git && cd flashTP
+#   pip install -r requirements.txt
+#   CUDA_ARCH_LIST="80;90" pip install . --no-build-isolation
 ```
 
 ## Profiling Methodology

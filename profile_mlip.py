@@ -256,6 +256,11 @@ class MACEAdapter(ModelAdapter):
         
         self.model = torch.load(model_path, map_location=device)
         
+        # Get model dtype and set as default
+        model_dtype = next(self.model.parameters()).dtype
+        self.dtype = model_dtype
+        torch.set_default_dtype(model_dtype)
+        
         # Apply backend conversion if needed
         if backend == "cueq":
             from mace.cli.convert_e3nn_cueq import run as run_e3nn_to_cueq
@@ -287,10 +292,16 @@ class MACEAdapter(ModelAdapter):
             )
             loader = DataLoader([data], batch_size=1, shuffle=False, drop_last=False)
             batch = next(iter(loader)).to(self.device)
+            
+            # Convert batch to model dtype
+            batch_dict = batch.to_dict()
+            for key, value in batch_dict.items():
+                if isinstance(value, torch.Tensor) and value.is_floating_point():
+                    batch_dict[key] = value.to(self.dtype)
         
         # Model forward
         with record_function("forward"):
-            out = self.model(batch.to_dict(), compute_force=True)
+            out = self.model(batch_dict, compute_force=True)
         
         return out
     

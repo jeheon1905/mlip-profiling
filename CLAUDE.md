@@ -90,7 +90,8 @@ conda create -n mlip-profiling-mace python=3.10 -y
 pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 pip install ./packages/mace
 # Optional accelerators:
-# pip install cuequivariance-torch  # for --backend cueq
+# IMPORTANT: Both packages required for cuEquivariance GPU acceleration
+# pip install cuequivariance-torch cuequivariance-ops-torch-cu12  # for --backend cueq (CUDA 12.x)
 # pip install openequivariance      # for --backend oeq
 
 # SevenNet environment
@@ -98,7 +99,8 @@ conda create -n mlip-profiling-sevenn python=3.10 -y
 pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
 pip install ./packages/sevenn
 # Optional accelerators:
-# pip install cuequivariance-torch  # for --backend cueq
+# IMPORTANT: Both packages required for cuEquivariance GPU acceleration
+# pip install cuequivariance-torch cuequivariance-ops-torch-cu12  # for --backend cueq (CUDA 12.x)
 # pip install openequivariance      # for --backend oeq
 # FlashTP (build from source):
 #   git clone https://github.com/SNU-ARC/flashTP.git && cd flashTP
@@ -129,9 +131,11 @@ All models include graph generation in each inference for fair comparison.
 | Backend | Flag | Description | Required Package | MACE | SevenNet |
 |---------|------|-------------|------------------|------|----------|
 | e3nn | `--backend e3nn` | Standard e3nn (default) | Built-in | ✓ | ✓ |
-| cuEquivariance | `--backend cueq` | NVIDIA GPU-accelerated tensor products | `cuequivariance-torch` | ✓ | ✓ |
-| FlashTP | `--backend flash` | Fast tensor product implementation | `flashTP-e3nn` | ✗ | ✓ |
+| cuEquivariance | `--backend cueq` | NVIDIA GPU-accelerated tensor products | `cuequivariance-torch` + `cuequivariance-ops-torch-cu12` | ✓ | ✓ |
+| FlashTP | `--backend flash` | Fast tensor product implementation | Build from source | ✗ | ✓ |
 | OpenEquivariance | `--backend oeq` | Open-source equivariant acceleration | `openequivariance` | ✓ | ✓ |
+
+> **Note**: Installing only `cuequivariance-torch` without `cuequivariance-ops-torch-cu*` causes fallback to naive Python implementation (8x slower).
 
 ## Adding New Models
 

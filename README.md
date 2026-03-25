@@ -232,11 +232,15 @@ MACE supports tensor product accelerators for improved performance:
 
 ```bash
 # cuEquivariance (NVIDIA GPU acceleration) - Recommended for NVIDIA GPUs
-pip install cuequivariance-torch
+# IMPORTANT: Both packages are required for actual GPU acceleration
+pip install cuequivariance-torch cuequivariance-ops-torch-cu12  # For CUDA 12.x
+# pip install cuequivariance-torch cuequivariance-ops-torch-cu13  # For CUDA 13.x
 
-# OpenEquivariance (open-source acceleration)
+# OpenEquivariance (open-source acceleration) - experimental
 pip install openequivariance
 ```
+
+> **Warning**: Installing only `cuequivariance-torch` without `cuequivariance-ops-torch-cu*` will cause fallback to naive Python implementation, which is **8x slower** than e3nn.
 
 | Backend | Flag | Description |
 |---------|------|-------------|
@@ -318,7 +322,9 @@ SevenNet supports multiple tensor product accelerators. Install any of the follo
 
 ```bash
 # cuEquivariance (NVIDIA GPU acceleration) - Recommended for NVIDIA GPUs
-pip install cuequivariance-torch
+# IMPORTANT: Both packages are required for actual GPU acceleration
+pip install cuequivariance-torch cuequivariance-ops-torch-cu12  # For CUDA 12.x
+# pip install cuequivariance-torch cuequivariance-ops-torch-cu13  # For CUDA 13.x
 
 # OpenEquivariance (open-source acceleration)
 pip install openequivariance
@@ -328,6 +334,8 @@ git clone https://github.com/SNU-ARC/flashTP.git && cd flashTP
 pip install -r requirements.txt
 CUDA_ARCH_LIST="80;90" pip install . --no-build-isolation
 ```
+
+> **Warning**: Installing only `cuequivariance-torch` without `cuequivariance-ops-torch-cu*` will cause fallback to naive Python implementation, which is **8x slower** than e3nn.
 
 > **Note**: All backends can be installed simultaneously without conflicts. SevenNet checks availability at runtime. However, only **one backend can be active** at a time during profiling.
 

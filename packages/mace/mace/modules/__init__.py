@@ -26,7 +26,6 @@ from .blocks import (
 )
 # [PROFILING] Added for detailed profiling support
 from .profiling import (
-    ProfilerContext,
     is_profiling_enabled,
     record_function_if_enabled,
     set_profiling_enabled,

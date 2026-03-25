@@ -94,10 +94,14 @@ class ESENAdapter(ModelAdapter):
     """Adapter for eSEN/UMA models from fairchem."""
     
     TRACKED_OPERATIONS = [
-        # mlip_unit.py (top-level)
-        "element_refs",
+        # profile_mlip.py (adapter) - data preparation
+        "eSEN::data_preparation",
+        # predict.py - predict stages
+        "eSEN::data_to_device",
+        "eSEN::model_forward",
+        "eSEN::process_outputs",
+        # escn_md.py (backbone) - top-level
         "forward",
-        # escn_md.py (backbone)
         "get_displacement_and_cell",
         "generate_graph",
         "charge spin dataset embeddings",
@@ -109,6 +113,8 @@ class ESENAdapter(ModelAdapter):
         "message passing 1",
         "message passing 2",
         "message passing 3",
+        "balance_channels",
+        "final_norm",
         # escn_md_block.py (message passing block)
         "SO2Conv",
         "edgewise",
@@ -165,16 +171,17 @@ class ESENAdapter(ModelAdapter):
         from fairchem.core.datasets.atomic_data import AtomicData, atomicdata_list_to_batch
         
         # Create batch (graph generation included if external_graph_gen=True)
-        data = AtomicData.from_ase(
-            atoms,
-            r_edges=self._external_graph_gen,
-            radius=self._cutoff,
-            max_neigh=self._max_neighbors if self._external_graph_gen else None,
-            r_data_keys=["charge", "spin"],
-            task_name="omol",
-        )
-        data.pos.requires_grad_(True)
-        batch = atomicdata_list_to_batch([data]).to(self.device)
+        with record_function("eSEN::data_preparation"):
+            data = AtomicData.from_ase(
+                atoms,
+                r_edges=self._external_graph_gen,
+                radius=self._cutoff,
+                max_neigh=self._max_neighbors if self._external_graph_gen else None,
+                r_data_keys=["charge", "spin"],
+                task_name="omol",
+            )
+            data.pos.requires_grad_(True)
+            batch = atomicdata_list_to_batch([data]).to(self.device)
         
         # Inference (graph generated inside if external_graph_gen=False)
         return self.predictor.predict(batch)

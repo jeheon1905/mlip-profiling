@@ -482,43 +482,49 @@ class ScaleShiftMACE(MACE):
         lammps_mliap: bool = False,
     ) -> Dict[str, Optional[torch.Tensor]]:
         # Setup
-        ctx = prepare_graph(
-            data,
-            compute_virials=compute_virials,
-            compute_stress=compute_stress,
-            compute_displacement=compute_displacement,
-            lammps_mliap=lammps_mliap,
-        )
+        # [PROFILING] Added wrapper and indent only
+        with record_function_if_enabled("MACE::prepare_graph"):
+            ctx = prepare_graph(
+                data,
+                compute_virials=compute_virials,
+                compute_stress=compute_stress,
+                compute_displacement=compute_displacement,
+                lammps_mliap=lammps_mliap,
+            )
 
-        is_lammps = ctx.is_lammps
-        num_atoms_arange = ctx.num_atoms_arange.to(torch.int64)
-        num_graphs = ctx.num_graphs
-        displacement = ctx.displacement
-        positions = ctx.positions
-        vectors = ctx.vectors
-        lengths = ctx.lengths
-        cell = ctx.cell
-        node_heads = ctx.node_heads.to(torch.int64)
-        interaction_kwargs = ctx.interaction_kwargs
-        lammps_natoms = interaction_kwargs.lammps_natoms
-        lammps_class = interaction_kwargs.lammps_class
+            is_lammps = ctx.is_lammps
+            num_atoms_arange = ctx.num_atoms_arange.to(torch.int64)
+            num_graphs = ctx.num_graphs
+            displacement = ctx.displacement
+            positions = ctx.positions
+            vectors = ctx.vectors
+            lengths = ctx.lengths
+            cell = ctx.cell
+            node_heads = ctx.node_heads.to(torch.int64)
+            interaction_kwargs = ctx.interaction_kwargs
+            lammps_natoms = interaction_kwargs.lammps_natoms
+            lammps_class = interaction_kwargs.lammps_class
 
         # Atomic energies
-        node_e0 = self.atomic_energies_fn(data["node_attrs"])[
-            num_atoms_arange, node_heads
-        ]
-        e0 = scatter_sum(
-            src=node_e0, index=data["batch"], dim=0, dim_size=num_graphs
-        ).to(
-            vectors.dtype
-        )  # [n_graphs, num_heads]
+        # [PROFILING] Added wrapper and indent only
+        with record_function_if_enabled("MACE::atomic_energies"):
+            node_e0 = self.atomic_energies_fn(data["node_attrs"])[
+                num_atoms_arange, node_heads
+            ]
+            e0 = scatter_sum(
+                src=node_e0, index=data["batch"], dim=0, dim_size=num_graphs
+            ).to(
+                vectors.dtype
+            )  # [n_graphs, num_heads]
 
         # Embeddings
-        node_feats = self.node_embedding(data["node_attrs"])
-        edge_attrs = self.spherical_harmonics(vectors)
-        edge_feats, cutoff = self.radial_embedding(
-            lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
-        )
+        # [PROFILING] Added wrapper and indent only
+        with record_function_if_enabled("MACE::embeddings"):
+            node_feats = self.node_embedding(data["node_attrs"])
+            edge_attrs = self.spherical_harmonics(vectors)
+            edge_feats, cutoff = self.radial_embedding(
+                lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
+            )
 
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.pair_repulsion_fn(
@@ -556,37 +562,42 @@ class ScaleShiftMACE(MACE):
         node_es_list = [pair_node_energy]
         node_feats_list: List[torch.Tensor] = []
 
+        # [PROFILING] Added wrapper and indent only for interaction() and product() calls
         for i, (interaction, product) in enumerate(
             zip(self.interactions, self.products)
         ):
             node_attrs_slice = data["node_attrs"]
             if is_lammps and i > 0:
                 node_attrs_slice = node_attrs_slice[: lammps_natoms[0]]
-            node_feats, sc = interaction(
-                node_attrs=node_attrs_slice,
-                node_feats=node_feats,
-                edge_attrs=edge_attrs,
-                edge_feats=edge_feats,
-                edge_index=data["edge_index"],
-                cutoff=cutoff,
-                first_layer=(i == 0),
-                lammps_class=lammps_class,
-                lammps_natoms=lammps_natoms,
-            )
+            with record_function_if_enabled(f"MACE::interaction_{i}"):
+                node_feats, sc = interaction(
+                    node_attrs=node_attrs_slice,
+                    node_feats=node_feats,
+                    edge_attrs=edge_attrs,
+                    edge_feats=edge_feats,
+                    edge_index=data["edge_index"],
+                    cutoff=cutoff,
+                    first_layer=(i == 0),
+                    lammps_class=lammps_class,
+                    lammps_natoms=lammps_natoms,
+                )
             if is_lammps and i == 0:
                 node_attrs_slice = node_attrs_slice[: lammps_natoms[0]]
-            node_feats = product(
-                node_feats=node_feats, sc=sc, node_attrs=node_attrs_slice
-            )
+            with record_function_if_enabled(f"MACE::product_{i}"):
+                node_feats = product(
+                    node_feats=node_feats, sc=sc, node_attrs=node_attrs_slice
+                )
             node_feats_list.append(node_feats)
 
-        for i, readout in enumerate(self.readouts):
-            feat_idx = -1 if len(self.readouts) == 1 else i
-            node_es_list.append(
-                readout(node_feats_list[feat_idx], node_heads)[
-                    num_atoms_arange, node_heads
-                ]
-            )
+        # [PROFILING] Added wrapper and indent only
+        with record_function_if_enabled("MACE::readouts"):
+            for i, readout in enumerate(self.readouts):
+                feat_idx = -1 if len(self.readouts) == 1 else i
+                node_es_list.append(
+                    readout(node_feats_list[feat_idx], node_heads)[
+                        num_atoms_arange, node_heads
+                    ]
+                )
 
         node_feats_out = torch.cat(node_feats_list, dim=-1)
         node_inter_es = torch.sum(torch.stack(node_es_list, dim=0), dim=0)
@@ -596,19 +607,21 @@ class ScaleShiftMACE(MACE):
         total_energy = e0 + inter_e
         node_energy = node_e0.clone().double() + node_inter_es.clone().double()
 
-        forces, virials, stress, hessian, edge_forces = get_outputs(
-            energy=inter_e,
-            positions=positions,
-            displacement=displacement,
-            vectors=vectors,
-            cell=cell,
-            training=training,
-            compute_force=compute_force,
-            compute_virials=compute_virials,
-            compute_stress=compute_stress,
-            compute_hessian=compute_hessian,
-            compute_edge_forces=compute_edge_forces or compute_atomic_stresses,
-        )
+        # [PROFILING] Added wrapper and indent only
+        with record_function_if_enabled("MACE::get_outputs"):
+            forces, virials, stress, hessian, edge_forces = get_outputs(
+                energy=inter_e,
+                positions=positions,
+                displacement=displacement,
+                vectors=vectors,
+                cell=cell,
+                training=training,
+                compute_force=compute_force,
+                compute_virials=compute_virials,
+                compute_stress=compute_stress,
+                compute_hessian=compute_hessian,
+                compute_edge_forces=compute_edge_forces or compute_atomic_stresses,
+            )
 
         atomic_virials: Optional[torch.Tensor] = None
         atomic_stresses: Optional[torch.Tensor] = None

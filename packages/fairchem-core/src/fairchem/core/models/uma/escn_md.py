@@ -657,6 +657,10 @@ class eSCNMDBackbone(nn.Module, MOLEInterface):
 
     @conditional_grad(torch.enable_grad())
     def forward(self, data_dict: AtomicData) -> dict[str, torch.Tensor]:
+        with record_function("forward"):
+            return self._forward_impl(data_dict)
+
+    def _forward_impl(self, data_dict: AtomicData) -> dict[str, torch.Tensor]:
         data_dict["atomic_numbers"] = data_dict["atomic_numbers"].long()
         data_dict["atomic_numbers_full"] = data_dict["atomic_numbers"]
         data_dict["batch_full"] = data_dict["batch"]
@@ -772,16 +776,18 @@ class eSCNMDBackbone(nn.Module, MOLEInterface):
                     node_offset=data_dict["gp_node_offset"],
                 )
                 # balance any channels requested
-                x_message = self.balance_channels(
-                    x_message,
-                    charge=data_dict["charge"],
-                    spin=data_dict["spin"],
-                    natoms=data_dict["natoms"],
-                    batch=data_dict["batch"],
-                )
+                with record_function("balance_channels"):
+                    x_message = self.balance_channels(
+                        x_message,
+                        charge=data_dict["charge"],
+                        spin=data_dict["spin"],
+                        natoms=data_dict["natoms"],
+                        batch=data_dict["batch"],
+                    )
 
         # Final layer norm
-        x_message = self.norm(x_message)
+        with record_function("final_norm"):
+            x_message = self.norm(x_message)
         out = {
             "node_embedding": x_message,
             "displacement": displacement,

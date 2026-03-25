@@ -269,7 +269,10 @@ class MLIPPredictUnit(PredictUnit[AtomicData], MLIPPredictUnitProtocol):
         if not self.lazy_model_intialized:
             self._lazy_init(data)
 
-        data_device = data.to(self.device).clone()
+        from torch.profiler import record_function
+        
+        with record_function("eSEN::data_to_device"):
+            data_device = data.to(self.device).clone()
 
         dtype = self.inference_settings.base_precision_dtype
         if not self._warned_upcast:
@@ -306,14 +309,18 @@ class MLIPPredictUnit(PredictUnit[AtomicData], MLIPPredictUnitProtocol):
         """
         Execute model inference.
         """
+        from torch.profiler import record_function
+        
         inference_context = torch.no_grad() if self.direct_forces else nullcontext()
         tf32_context = (
             tf32_context_manager() if self.inference_settings.tf32 else nullcontext()
         )
 
         with inference_context, tf32_context:
-            output = self.model(data)
-            return self._process_outputs(data, output, undo_refs)
+            with record_function("eSEN::model_forward"):
+                output = self.model(data)
+            with record_function("eSEN::process_outputs"):
+                return self._process_outputs(data, output, undo_refs)
 
     def _process_outputs(self, data: AtomicData, output: dict, undo_refs: bool) -> dict:
         """

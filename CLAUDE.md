@@ -2,6 +2,11 @@
 
 This file provides context for Claude (AI assistant) when working with this codebase.
 
+## User Preferences
+
+- **Ask permission before**: `git commit`, job submission (`sbatch`, `srun` for batch jobs)
+- **OK without asking**: file edits, running commands, reading files, searches
+
 ## Project Overview
 
 **mlip-profiling** is a performance profiling toolkit for Machine Learning Interatomic Potential (MLIP) models. It provides detailed timing analysis using PyTorch Profiler with Chrome Trace export for visualization in Perfetto.

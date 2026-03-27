@@ -115,6 +115,9 @@ class ESENAdapter(ModelAdapter):
         "message passing 3",
         "balance_channels",
         "final_norm",
+        # escn_md.py - force/stress computation (backward)
+        "eSEN::compute_forces",
+        "eSEN::compute_forces_stress",
         # escn_md_block.py (message passing block)
         "SO2Conv",
         "edgewise",
@@ -230,6 +233,9 @@ class MACEAdapter(ModelAdapter):
         "MACE::product_1",
         "MACE::readouts",
         "MACE::get_outputs",
+        # utils.py - force/stress computation (backward)
+        "MACE::compute_forces",
+        "MACE::compute_forces_virials",
         # Block-level operations (from blocks.py)
         "MACE::ProductBasis",
         "MACE::SymmetricContraction",

@@ -1092,37 +1092,39 @@ class MLP_EFS_Head(nn.Module, HeadInterface):
             )
 
         if self.regress_stress:
-            grads = torch.autograd.grad(
-                [energy_part.sum()],
-                [data["pos_original"], emb["displacement"]],
-                create_graph=self.training,
-            )
-            if gp_utils.initialized():
-                grads = (
-                    gp_utils.reduce_from_model_parallel_region(grads[0]),
-                    gp_utils.reduce_from_model_parallel_region(grads[1]),
+            with record_function("eSEN::compute_forces_stress"):
+                grads = torch.autograd.grad(
+                    [energy_part.sum()],
+                    [data["pos_original"], emb["displacement"]],
+                    create_graph=self.training,
                 )
+                if gp_utils.initialized():
+                    grads = (
+                        gp_utils.reduce_from_model_parallel_region(grads[0]),
+                        gp_utils.reduce_from_model_parallel_region(grads[1]),
+                    )
 
-            forces = torch.neg(grads[0])
-            virial = grads[1].view(-1, 3, 3)
-            volume = torch.det(data["cell"]).abs().unsqueeze(-1)
-            stress = virial / volume.view(-1, 1, 1)
-            virial = torch.neg(virial)
-            stress = stress.view(
-                -1, 9
-            )  # NOTE to work better with current Multi-task trainer
+                forces = torch.neg(grads[0])
+                virial = grads[1].view(-1, 3, 3)
+                volume = torch.det(data["cell"]).abs().unsqueeze(-1)
+                stress = virial / volume.view(-1, 1, 1)
+                virial = torch.neg(virial)
+                stress = stress.view(
+                    -1, 9
+                )  # NOTE to work better with current Multi-task trainer
             outputs[forces_key] = {"forces": forces} if self.wrap_property else forces
             outputs[stress_key] = {"stress": stress} if self.wrap_property else stress
             data["cell"] = emb["orig_cell"]
         elif self.regress_forces:
-            forces = (
-                -1
-                * torch.autograd.grad(
-                    energy_part.sum(), data["pos"], create_graph=self.training
-                )[0]
-            )
-            if gp_utils.initialized():
-                forces = gp_utils.reduce_from_model_parallel_region(forces)
+            with record_function("eSEN::compute_forces"):
+                forces = (
+                    -1
+                    * torch.autograd.grad(
+                        energy_part.sum(), data["pos"], create_graph=self.training
+                    )[0]
+                )
+                if gp_utils.initialized():
+                    forces = gp_utils.reduce_from_model_parallel_region(forces)
             outputs[forces_key] = {"forces": forces} if self.wrap_property else forces
         return outputs
 

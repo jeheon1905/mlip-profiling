@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.utils.data
 from scipy.constants import c, e
+from torch.profiler import record_function
 
 from mace.tools import to_numpy
 from mace.tools.scatter import scatter_mean, scatter_std, scatter_sum
@@ -22,20 +23,21 @@ from .blocks import AtomicEnergiesBlock
 def compute_forces(
     energy: torch.Tensor, positions: torch.Tensor, training: bool = True
 ) -> torch.Tensor:
-    grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
-    gradient = torch.autograd.grad(
-        outputs=[energy],  # [n_graphs, ]
-        inputs=[positions],  # [n_nodes, 3]
-        grad_outputs=grad_outputs,
-        retain_graph=training,  # Make sure the graph is not destroyed during training
-        create_graph=training,  # Create graph for second derivative
-        allow_unused=True,  # For complete dissociation turn to true
-    )[
-        0
-    ]  # [n_nodes, 3]
-    if gradient is None:
-        return torch.zeros_like(positions)
-    return -1 * gradient
+    with record_function("MACE::compute_forces"):
+        grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
+        gradient = torch.autograd.grad(
+            outputs=[energy],  # [n_graphs, ]
+            inputs=[positions],  # [n_nodes, 3]
+            grad_outputs=grad_outputs,
+            retain_graph=training,  # Make sure the graph is not destroyed during training
+            create_graph=training,  # Create graph for second derivative
+            allow_unused=True,  # For complete dissociation turn to true
+        )[
+            0
+        ]  # [n_nodes, 3]
+        if gradient is None:
+            return torch.zeros_like(positions)
+        return -1 * gradient
 
 
 def compute_forces_virials(
@@ -46,27 +48,28 @@ def compute_forces_virials(
     training: bool = True,
     compute_stress: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
-    grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
-    forces, virials = torch.autograd.grad(
-        outputs=[energy],  # [n_graphs, ]
-        inputs=[positions, displacement],  # [n_nodes, 3]
-        grad_outputs=grad_outputs,
-        retain_graph=training,  # Make sure the graph is not destroyed during training
-        create_graph=training,  # Create graph for second derivative
-        allow_unused=True,
-    )
-    stress = torch.zeros_like(displacement)
-    if compute_stress and virials is not None:
-        cell = cell.view(-1, 3, 3)
-        volume = torch.linalg.det(cell).abs().unsqueeze(-1)
-        stress = virials / volume.view(-1, 1, 1)
-        stress = torch.where(torch.abs(stress) < 1e10, stress, torch.zeros_like(stress))
-    if forces is None:
-        forces = torch.zeros_like(positions)
-    if virials is None:
-        virials = torch.zeros((1, 3, 3))
+    with record_function("MACE::compute_forces_virials"):
+        grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
+        forces, virials = torch.autograd.grad(
+            outputs=[energy],  # [n_graphs, ]
+            inputs=[positions, displacement],  # [n_nodes, 3]
+            grad_outputs=grad_outputs,
+            retain_graph=training,  # Make sure the graph is not destroyed during training
+            create_graph=training,  # Create graph for second derivative
+            allow_unused=True,
+        )
+        stress = torch.zeros_like(displacement)
+        if compute_stress and virials is not None:
+            cell = cell.view(-1, 3, 3)
+            volume = torch.linalg.det(cell).abs().unsqueeze(-1)
+            stress = virials / volume.view(-1, 1, 1)
+            stress = torch.where(torch.abs(stress) < 1e10, stress, torch.zeros_like(stress))
+        if forces is None:
+            forces = torch.zeros_like(positions)
+        if virials is None:
+            virials = torch.zeros((1, 3, 3))
 
-    return -1 * forces, -1 * virials, stress
+        return -1 * forces, -1 * virials, stress
 
 
 def get_symmetric_displacement(

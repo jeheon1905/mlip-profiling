@@ -10,6 +10,86 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 - NequIP (not yet)
 - Allegro (not yet)
 
+## Model Architecture Overview
+
+### Comparison Summary
+
+| | eSEN | MACE | SevenNet |
+|---|---|---|---|
+| **Graph Generation** | GPU (nvalchemiops) | CPU (matscipy) | CPU (ASE/numpy) |
+| **Message Passing** | 4 layers (SO2Conv) | 2 layers (Interaction) | 5 layers (Convolution) |
+| **Force Calculation** | autograd.grad | autograd.grad | autograd.grad |
+| **Backends** | e3nn only | e3nn/cueq/oeq | e3nn/cueq/flash/oeq |
+| **A100 Latency (108 atoms)** | 59.46 ms | 33.72 ms (e3nn) | 52.97 ms (e3nn) |
+
+### eSEN Inference Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ eSEN::data_preparation                                              │
+│  • AtomicData.from_ase() → atomicdata_list_to_batch() → .to(device) │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ eSEN::model_forward (predictor.predict)                             │
+│  ├─ eSEN::data_to_device                                            │
+│  ├─ forward (backbone)                                              │
+│  │   ├─ generate_graph         ← GPU (nvalchemiops)                 │
+│  │   ├─ obtain wigner / rotmat                                      │
+│  │   ├─ atom/edge embedding                                         │
+│  │   ├─ message passing 0-3    ← SO2Conv, edgewise, atomwise        │
+│  │   ├─ balance_channels                                            │
+│  │   └─ final_norm                                                  │
+│  ├─ eSEN::compute_forces       ← autograd.grad (~71% of time)       │
+│  └─ eSEN::process_outputs                                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### MACE Inference Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ generate_graph                  ← CPU (matscipy)                    │
+│  • config_from_atoms() → AtomicData.from_config() → DataLoader      │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ forward (model)                                                     │
+│  ├─ MACE::prepare_graph        (edge vectors, distances)            │
+│  ├─ MACE::atomic_energies      (isolated atom energies)             │
+│  ├─ MACE::embeddings           (node features)                      │
+│  ├─ MACE::interaction_0 → MACE::product_0                           │
+│  │   └─ ProductBasis, SymmetricContraction                          │
+│  ├─ MACE::interaction_1 → MACE::product_1                           │
+│  ├─ MACE::readouts             (energy prediction)                  │
+│  └─ MACE::compute_forces       ← autograd.grad                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### SevenNet Inference Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ generate_graph                  ← CPU (ASE/numpy)                   │
+│  • AtomGraphData.from_ase() → .to(device)                           │
+└─────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ forward (model)                                                     │
+│  ├─ SevenNet::edge_embedding           (radial basis)               │
+│  ├─ SevenNet::onehot_to_feature_x      (atom features)              │
+│  ├─ Layer 0-4 (repeated structure)                                  │
+│  │   ├─ SevenNet::N_self_connection_intro                           │
+│  │   ├─ SevenNet::N_self_interaction_1                              │
+│  │   ├─ SevenNet::N_convolution        ← tensor product             │
+│  │   ├─ SevenNet::N_self_interaction_2                              │
+│  │   ├─ SevenNet::N_self_connection_outro                           │
+│  │   └─ SevenNet::N_equivariant_gate                                │
+│  ├─ SevenNet::reduce_output            (energy sum)                 │
+│  └─ [Force: autograd.grad]             ← backward                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ## Project Structure
 
 ```

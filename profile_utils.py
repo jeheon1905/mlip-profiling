@@ -141,9 +141,22 @@ def extract_operation_times_from_trace(
         
     Returns:
         Dictionary of operation timing data
+        
+    Raises:
+        FileNotFoundError: If trace file does not exist
+        ValueError: If trace file is not valid JSON
     """
-    with open(trace_path) as f:
-        trace_data = json.load(f)
+    trace_path = Path(trace_path)
+    if not trace_path.exists():
+        raise FileNotFoundError(f"Trace file not found: {trace_path}")
+    
+    try:
+        with open(trace_path) as f:
+            trace_data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in trace file {trace_path}: {e}")
+    except Exception as e:
+        raise ValueError(f"Failed to read trace file {trace_path}: {e}")
     
     cpu_durations = {}
     gpu_durations = {}

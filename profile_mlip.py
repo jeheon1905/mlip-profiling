@@ -53,6 +53,71 @@ from profile_utils import (
 
 
 # =============================================================================
+# Custom Exceptions
+# =============================================================================
+
+class ProfilingError(Exception):
+    """Base exception for profiling errors."""
+    pass
+
+
+class ModelLoadError(ProfilingError):
+    """Error loading model."""
+    pass
+
+
+class DeviceError(ProfilingError):
+    """Error with device configuration."""
+    pass
+
+
+class StructureError(ProfilingError):
+    """Error with input structures."""
+    pass
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def validate_device(device: str) -> None:
+    """Validate that the specified device is available."""
+    if device == "cuda" or device.startswith("cuda:"):
+        if not torch.cuda.is_available():
+            raise DeviceError(
+                f"CUDA is not available. "
+                f"Please check your GPU drivers and PyTorch installation.\n"
+                f"Try: python -c 'import torch; print(torch.cuda.is_available())'"
+            )
+        if device.startswith("cuda:"):
+            device_id = int(device.split(":")[1])
+            if device_id >= torch.cuda.device_count():
+                raise DeviceError(
+                    f"CUDA device {device_id} not found. "
+                    f"Available devices: 0-{torch.cuda.device_count()-1}"
+                )
+
+
+def validate_file_exists(path: str | Path, description: str = "File") -> Path:
+    """Validate that a file exists and return Path object."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"{description} not found: {path}")
+    return path
+
+
+def ensure_output_dir(path: Path) -> Path:
+    """Ensure output directory exists, create if necessary."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise ProfilingError(f"Permission denied creating output directory: {path}")
+    except OSError as e:
+        raise ProfilingError(f"Failed to create output directory {path}: {e}")
+    return path
+
+
+# =============================================================================
 # Model Adapter Interface
 # =============================================================================
 
@@ -156,15 +221,31 @@ class ESENAdapter(ModelAdapter):
         from fairchem.core.calculate import pretrained_mlip
         from fairchem.core.units.mlip_unit.api.inference import inference_settings_default
         
+        # Validate inputs
+        validate_device(device)
+        
+        if model_name not in self.AVAILABLE_MODELS:
+            raise ModelLoadError(
+                f"Unknown eSEN model '{model_name}'.\n"
+                f"Available models: {self.AVAILABLE_MODELS}\n"
+                f"See: https://fair-chem.github.io/core/model_checkpoints.html"
+            )
+        
         self.model_name = model_name
         self.device = device
         self.inference_settings = inference_settings or inference_settings_default()
         
-        self.predictor = pretrained_mlip.get_predict_unit(
-            model_name=model_name,
-            inference_settings=self.inference_settings,
-            device=device,
-        )
+        try:
+                self.predictor = pretrained_mlip.get_predict_unit(
+                model_name=model_name,
+                inference_settings=self.inference_settings,
+                device=device,
+            )
+        except Exception as e:
+            raise ModelLoadError(
+                f"Failed to load eSEN model '{model_name}': {e}\n"
+                f"Check network connectivity for model download."
+            )
         
         self._cutoff = self.predictor.model.module.backbone.cutoff
         self._max_neighbors = self.predictor.model.module.backbone.max_neighbors
@@ -263,11 +344,30 @@ class MACEAdapter(ModelAdapter):
     ) -> None:
         from mace.tools import AtomicNumberTable
         
-        self.model_path = model_path
+        # Validate inputs
+        model_path = validate_file_exists(
+            model_path,
+            description="MACE model file"
+        )
+        validate_device(device)
+        
+        if backend not in self.AVAILABLE_BACKENDS:
+            raise ModelLoadError(
+                f"Unknown backend '{backend}'. "
+                f"Available: {self.AVAILABLE_BACKENDS}"
+            )
+        
+        self.model_path = str(model_path)
         self.device = device
         self.backend = backend
         
-        self.model = torch.load(model_path, map_location=device)
+        try:
+            self.model = torch.load(model_path, map_location=device)
+        except Exception as e:
+            raise ModelLoadError(
+                f"Failed to load MACE model from {model_path}: {e}\n"
+                f"Ensure the model was saved with a compatible PyTorch version."
+            )
         
         # Get model dtype and set as default
         model_dtype = next(self.model.parameters()).dtype
@@ -437,6 +537,15 @@ class SevenNetAdapter(ModelAdapter):
     ) -> None:
         import sevenn.util as util
         
+        # Validate inputs
+        validate_device(device)
+        
+        if backend not in self.AVAILABLE_BACKENDS:
+            raise ModelLoadError(
+                f"Unknown backend '{backend}'. "
+                f"Available: {self.AVAILABLE_BACKENDS}"
+            )
+        
         self.device = device
         self.backend = backend
         self.modal = modal
@@ -445,14 +554,25 @@ class SevenNetAdapter(ModelAdapter):
         enable_flash = (backend == "flash")
         enable_oeq = (backend == "oeq")
         
-        if model_name:
-            self.model_name = model_name
-            cp = util.load_checkpoint(model_name)
-        elif model_path:
-            self.model_path = model_path
-            cp = util.load_checkpoint(model_path)
-        else:
-            raise ValueError("Either model_name or model_path must be provided")
+        try:
+            if model_name:
+                if model_name not in self.AVAILABLE_MODELS:
+                    raise ModelLoadError(
+                        f"Unknown SevenNet model '{model_name}'.\n"
+                        f"Available models: {self.AVAILABLE_MODELS}"
+                    )
+                self.model_name = model_name
+                cp = util.load_checkpoint(model_name)
+            elif model_path:
+                model_path = validate_file_exists(model_path, "SevenNet model file")
+                self.model_path = str(model_path)
+                cp = util.load_checkpoint(str(model_path))
+            else:
+                raise ModelLoadError("Either model_name or model_path must be provided")
+        except ModelLoadError:
+            raise
+        except Exception as e:
+            raise ModelLoadError(f"Failed to load SevenNet model: {e}")
         
         self._config = cp.config
         self.model = cp.build_model(
@@ -833,13 +953,25 @@ After profiling:
         parser.error("--model-name or --model-path required for SevenNet models")
     
     if args.device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA requested but torch.cuda.is_available() is False")
+        raise DeviceError("CUDA requested but torch.cuda.is_available() is False")
+    
+    # Validate device
+    validate_device(args.device)
+    
+    # Ensure output directory exists
+    ensure_output_dir(args.output_dir)
     
     # Load structures
-    test_cases = load_structures_from_files(args.structure_files)
+    try:
+        test_cases = load_structures_from_files(args.structure_files)
+    except FileNotFoundError as e:
+        raise StructureError(str(e))
+    
     if not test_cases:
-        print("No valid structures found. Check file paths.")
-        return
+        raise StructureError(
+            f"No valid structures found in: {args.structure_files}\n"
+            f"Check file paths and ensure files are readable."
+        )
     
     test_cases.sort(key=lambda x: len(x[1]))
     
@@ -938,4 +1070,11 @@ After profiling:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProfilingError as e:
+        print(f"\nError: {e}")
+        exit(1)
+    except KeyboardInterrupt:
+        print("\nProfiling interrupted by user.")
+        exit(130)

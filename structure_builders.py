@@ -174,14 +174,17 @@ def load_structures_from_files(
     
     Returns:
         List of (name, Atoms) tuples
+        
+    Raises:
+        FileNotFoundError: If a file does not exist
+        ValueError: If a file cannot be read
     """
     structures = []
     
     for file_path in file_paths:
         path = Path(file_path)
         if not path.exists():
-            print(f"Warning: File not found: {file_path}")
-            continue
+            raise FileNotFoundError(f"Structure file not found: {file_path}")
         
         try:
             # Read single structure or multiple structures
@@ -189,8 +192,7 @@ def load_structures_from_files(
             if not isinstance(atoms_or_list, list):
                 atoms_or_list = [atoms_or_list]
         except Exception as e:
-            print(f"Warning: Failed to load {file_path}: {e}")
-            continue
+            raise ValueError(f"Failed to read structure file {file_path}: {e}")
         
         for idx, atoms in enumerate(atoms_or_list):
             # Set default charge/spin if not present

@@ -34,6 +34,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import platform
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -50,6 +52,47 @@ from profile_utils import (
     extract_operation_times_from_trace,
     trace_handler,
 )
+
+
+def get_system_info(device: str) -> dict:
+    """Collect system hardware information for reproducibility."""
+    info = {}
+
+    # CPU info
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    info["cpu_model"] = line.split(":", 1)[1].strip()
+                    break
+        info["cpu_cores_total"] = os.cpu_count()
+    except Exception:
+        info["cpu_model"] = platform.processor() or "unknown"
+        info["cpu_cores_total"] = os.cpu_count()
+
+    # SLURM allocation (if running under SLURM)
+    slurm_cpus = os.environ.get("SLURM_CPUS_ON_NODE")
+    if slurm_cpus:
+        info["slurm_cpus_on_node"] = int(slurm_cpus)
+    slurm_job = os.environ.get("SLURM_JOB_ID")
+    if slurm_job:
+        info["slurm_job_id"] = slurm_job
+    slurm_partition = os.environ.get("SLURM_JOB_PARTITION")
+    if slurm_partition:
+        info["slurm_partition"] = slurm_partition
+
+    # GPU info
+    if device == "cuda" and torch.cuda.is_available():
+        info["gpu_model"] = torch.cuda.get_device_name(0)
+        info["gpu_count"] = torch.cuda.device_count()
+        mem = torch.cuda.get_device_properties(0).total_memory
+        info["gpu_memory_gb"] = round(mem / (1024**3), 1)
+
+    # PyTorch / CUDA versions
+    info["torch_version"] = torch.__version__
+    info["cuda_version"] = torch.version.cuda or "N/A"
+
+    return info
 
 
 # =============================================================================
@@ -678,6 +721,7 @@ def run_profiling(
     wait_steps: int = 5,
     warmup_steps: int = 5,
     active_steps: int = 5,
+    summary_callback: callable = None,
     timeit_number: int = 10,
     timeit_repeat: int = 5,
 ) -> dict:
@@ -716,65 +760,82 @@ def run_profiling(
         print(f"\n[{name}] Profiling...")
         print(f"  atoms={natoms}")
         
-        prof_schedule = schedule(
-            wait=wait_steps,
-            warmup=warmup_steps,
-            active=active_steps,
-            repeat=1,
-        )
-        
-        latencies_ms = []
-        
-        def run_inference():
-            return adapter.run_inference(atoms)
-        
-        adapter.set_profiling_enabled(True)
-        with profile(
-            activities=activities,
-            schedule=prof_schedule,
-            on_trace_ready=trace_handler(output_dir, name),
-        ) as prof:
-            synchronize(device)
+        try:
+            prof_schedule = schedule(
+                wait=wait_steps,
+                warmup=warmup_steps,
+                active=active_steps,
+                repeat=1,
+            )
             
-            for step in range(total_steps):
-                t0 = time.perf_counter()
-                run_inference()
-                with record_function(f"barrier_{step}"):
-                    synchronize(device)
-                latencies_ms.append((time.perf_counter() - t0) * 1000)
-                prof.step()
-        adapter.set_profiling_enabled(False)
+            latencies_ms = []
+            
+            def run_inference():
+                return adapter.run_inference(atoms)
+            
+            adapter.set_profiling_enabled(True)
+            with profile(
+                activities=activities,
+                schedule=prof_schedule,
+                on_trace_ready=trace_handler(output_dir, name),
+            ) as prof:
+                synchronize(device)
+                
+                for step in range(total_steps):
+                    t0 = time.perf_counter()
+                    run_inference()
+                    with record_function(f"barrier_{step}"):
+                        synchronize(device)
+                    latencies_ms.append((time.perf_counter() - t0) * 1000)
+                    prof.step()
+            adapter.set_profiling_enabled(False)
+            
+            trace_path = output_dir / f"{name}.trace.json"
+            operation_times = extract_operation_times_from_trace(
+                trace_path, active_steps, adapter.tracked_operations
+            )
+            
+            active_latencies = latencies_ms[wait_steps + warmup_steps:]
+            mean_latency = sum(active_latencies) / len(active_latencies)
+            
+            qps, ns_per_day, timeit_mean_ms, timeit_std_ms = get_qps(
+                inference_fn=run_inference,
+                device=device,
+                warmups=10,
+                timeiters=timeit_number,
+                repeats=timeit_repeat,
+            )
+            
+            results[name] = {
+                "natoms": natoms,
+                "mean_latency_ms": mean_latency,
+                "min_latency_ms": min(active_latencies),
+                "max_latency_ms": max(active_latencies),
+                "timeit_mean_ms": timeit_mean_ms,
+                "timeit_std_ms": timeit_std_ms,
+                "qps": qps,
+                "ns_per_day": ns_per_day,
+                "trace_file": str(trace_path),
+                "operations": operation_times,
+            }
+            
+            print(f"  timeit: {timeit_mean_ms:.2f} ± {timeit_std_ms:.2f} ms | QPS: {qps:.1f} | ns/day: {ns_per_day:.2f}")
         
-        trace_path = output_dir / f"{name}.trace.json"
-        operation_times = extract_operation_times_from_trace(
-            trace_path, active_steps, adapter.tracked_operations
-        )
+        except torch.cuda.OutOfMemoryError:
+            print(f"  CUDA OOM at {natoms} atoms — skipping this and larger structures")
+            adapter.set_profiling_enabled(False)
+            if device == "cuda":
+                torch.cuda.empty_cache()
+            break
+        except Exception as e:
+            print(f"  Error: {e} — skipping {name}")
+            adapter.set_profiling_enabled(False)
+            continue
         
-        active_latencies = latencies_ms[wait_steps + warmup_steps:]
-        mean_latency = sum(active_latencies) / len(active_latencies)
-        
-        qps, ns_per_day, timeit_mean_ms, timeit_std_ms = get_qps(
-            inference_fn=run_inference,
-            device=device,
-            warmups=10,
-            timeiters=timeit_number,
-            repeats=timeit_repeat,
-        )
-        
-        results[name] = {
-            "natoms": natoms,
-            "mean_latency_ms": mean_latency,
-            "min_latency_ms": min(active_latencies),
-            "max_latency_ms": max(active_latencies),
-            "timeit_mean_ms": timeit_mean_ms,
-            "timeit_std_ms": timeit_std_ms,
-            "qps": qps,
-            "ns_per_day": ns_per_day,
-            "trace_file": str(trace_path),
-            "operations": operation_times,
-        }
-        
-        print(f"  timeit: {timeit_mean_ms:.2f} ± {timeit_std_ms:.2f} ms | QPS: {qps:.1f} | ns/day: {ns_per_day:.2f}")
+        # Save intermediate summary after each structure
+        # (ensures partial results are preserved if a later structure OOMs)
+        if summary_callback is not None:
+            summary_callback(results)
     
     return results
 
@@ -1010,6 +1071,31 @@ After profiling:
             modal=args.modal,
         )
     
+    # Save outputs
+    model_info = adapter.model_info
+    system_info = get_system_info(args.device)
+    summary_path = args.output_dir / "summary.json"
+    
+    def save_summary(results):
+        """Save summary.json incrementally after each structure."""
+        summary = {
+            "model": model_info,
+            "device": args.device,
+            "system_info": system_info,
+            "profiler_schedule": {
+                "wait_steps": args.wait_steps,
+                "warmup_steps": args.warmup_steps,
+                "active_steps": args.active_steps,
+            },
+            "timeit_settings": {
+                "number": args.timeit_number,
+                "repeat": args.timeit_repeat,
+            },
+            "results": results,
+        }
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2)
+    
     # Run profiling
     results = run_profiling(
         adapter=adapter,
@@ -1021,29 +1107,11 @@ After profiling:
         active_steps=args.active_steps,
         timeit_number=args.timeit_number,
         timeit_repeat=args.timeit_repeat,
+        summary_callback=save_summary,
     )
     
-    # Save outputs
-    model_info = adapter.model_info
-    
-    summary_path = args.output_dir / "summary.json"
-    summary = {
-        "model": model_info,
-        "device": args.device,
-        "profiler_schedule": {
-            "wait_steps": args.wait_steps,
-            "warmup_steps": args.warmup_steps,
-            "active_steps": args.active_steps,
-        },
-        "timeit_settings": {
-            "number": args.timeit_number,
-            "repeat": args.timeit_repeat,
-        },
-        "results": results,
-    }
-    
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2)
+    # Final save (ensures complete results are written)
+    save_summary(results)
     
     csv_path = args.output_dir / "timing_table.csv"
     save_timing_table_csv(results, csv_path, adapter.tracked_operations)

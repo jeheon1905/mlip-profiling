@@ -20,7 +20,7 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 | **Message Passing** | 4 layers (SO2Conv) | 2 layers (Interaction) | 5 layers (Convolution) |
 | **Force Calculation** | autograd.grad | autograd.grad | autograd.grad |
 | **Backends** | e3nn only | e3nn/cueq/oeq | e3nn/cueq/flash/oeq |
-| **A100 Latency (108 atoms)** | 59.46 ms | 33.72 ms (e3nn) | 52.97 ms (e3nn) |
+| **A100 Latency (108 atoms)** | 58.65 ms | 32.64 ms (e3nn) | 53.86 ms (e3nn) |
 
 ### eSEN Inference Flow
 
@@ -98,6 +98,13 @@ mlip-profiling/
 ├── profile_mlip.py              # Unified profiling script
 ├── profile_utils.py             # Shared profiling utilities
 ├── structure_builders.py        # Structure generation utilities
+├── scripts/
+│   ├── run_profiling.sh         # SLURM batch profiling script
+│   ├── generate_plots.py        # Plot generation (breakdown, pie, kernel, comparison)
+│   ├── analyze_kernels.py       # CUDA kernel trace analysis
+│   └── visualize_results.py     # Interactive result visualization
+├── structures/                  # Pre-generated atomic structures (.xyz)
+├── results/                     # Profiling output (git-ignored)
 └── packages/                    # Source codes of each MLIP model
     ├── fairchem-core/           # eSEN (modified for profiling)
     ├── mace/                    # MACE (modified for profiling)
@@ -118,12 +125,64 @@ Modifications are marked with `[PROFILING]` comments.
 > **Note**: Source code has been minimally modified for profiling. All modifications are marked with `[PROFILING]` comments.
 
 
-## Analysis with Perfetto
+## Output Files
+
+Profiling generates the following files per model configuration:
+
+| File | Description |
+|------|-------------|
+| `summary.json` | Full results with model info, system info, and timing data |
+| `{structure}.trace.json` | Chrome trace for Perfetto visualization |
+| `timing_table.csv` | CSV with all metrics |
+| `timing_table.md` | Markdown summary table |
+
+The `summary.json` includes `system_info` recording the CPU, GPU, SLURM, and PyTorch/CUDA versions for reproducibility.
+
+## Visualization & Analysis
+
+### Plot Generation
+
+Generate plots from profiling results:
+
+```bash
+# Generate all plots for a results directory
+python scripts/generate_plots.py results/2026-03-30_201144_NVIDIA_A100-PCIE-40GB
+```
+
+Generated plots per model configuration:
+- **Operation breakdown** (`_breakdown_leaf.png`) — Stacked bar chart of per-operation effective time
+- **Pie chart** (`_pie.png`) — Proportional time distribution (small ops <3% merged to "Other")
+- **Kernel breakdown** (`_kernels.png`) — GPU kernel categories (Gemm, Elementwise, etc.)
+- **Model comparison** (`_comparison_latency.png`, `_comparison_speedup.png`) — Cross-model latency scaling and backend speedup
+
+### Kernel Analysis
+
+```bash
+# Analyze CUDA kernels from trace files
+python scripts/analyze_kernels.py results/.../*.trace.json
+```
+
+### Perfetto Trace Viewer
 
 1. Run profiling script to generate Chrome trace file (`.json`)
 2. Open https://ui.perfetto.dev
 3. Click "Open trace file" and upload the `.json` file
 4. Analyze the timeline visualization
+
+## Batch Profiling
+
+Run all model configurations in one SLURM job:
+
+```bash
+sbatch scripts/run_profiling.sh
+```
+
+This profiles all supported models (eSEN, MACE, SevenNet) with their respective backends across multiple structure sizes. Results are saved to `results/{date}_{gpu_type}/`.
+
+## Robustness
+
+- **CUDA OOM handling**: If a structure causes out-of-memory, profiling breaks and skips larger structures. Partial results are preserved via incremental `summary.json` saves.
+- **Error recovery**: Non-OOM errors skip the current structure and continue with the next one.
 
 ---
 

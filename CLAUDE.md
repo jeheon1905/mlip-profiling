@@ -20,6 +20,13 @@ mlip-profiling/
 ├── structure_builders.py  # Atomic structure generation
 ├── README.md
 ├── CLAUDE.md
+├── scripts/
+│   ├── run_profiling.sh       # SLURM batch profiling (all models)
+│   ├── generate_plots.py      # Plot generation (breakdown, pie, kernel, comparison)
+│   ├── analyze_kernels.py     # CUDA kernel trace analysis
+│   └── visualize_results.py   # Interactive result visualization
+├── structures/            # Pre-generated atomic structures (.xyz)
+├── results/               # Profiling output (git-ignored)
 └── packages/              # MLIP model source codes (modified for profiling)
     ├── fairchem-core/     # eSEN models (fairchem v2.15.0)
     ├── mace/              # MACE models
@@ -42,6 +49,9 @@ mlip-profiling/
 - **MACEAdapter**: MACE model adapter (direct inference, no ASE calculator)
 - **SevenNetAdapter**: SevenNet model adapter with backend options
 - **run_profiling()**: Main profiling loop with PyTorch Profiler
+- **get_system_info()**: Collects CPU/GPU/SLURM/PyTorch info for reproducibility
+- **OOM handling**: `torch.cuda.OutOfMemoryError` → break (skip larger), general `Exception` → continue
+- **Incremental save**: `summary_callback` saves `summary.json` after each structure
 
 ### profile_utils.py
 - `synchronize(device)`: Multi-GPU barrier or CUDA synchronize
@@ -53,6 +63,22 @@ mlip-profiling/
 - `get_fcc_crystal_by_num_cells()`: Generate FCC supercells
 - `get_water_box()`: Generate water boxes with packmol
 - `load_structures_from_files()`: Load structures from xyz/cif files
+
+### scripts/generate_plots.py
+- Generates operation breakdown, pie chart, kernel breakdown, and model comparison plots
+- Uses **effective_time** metric: CPU time for CPU-bound ops, GPU time for GPU-bound ops
+- `CPU_OPERATIONS` allowlist per model_type for explicit classification
+- Merges small operations (<3%) into "Other" in pie charts
+
+### scripts/analyze_kernels.py
+- Deep CUDA kernel-level analysis from Chrome trace files
+- Maps kernels to `record_function` tags via correlation IDs
+- Categorizes kernels (Gemm, Elementwise, Reduction, etc.)
+
+### scripts/run_profiling.sh
+- SLURM batch script to profile all model configurations
+- Result directory format: `results/{YYYY-MM-DD_HHMMSS}_{GPU_TYPE}/`
+- Default structures: 108, 500, 1372, 2916 atoms (Cu FCC)
 
 ## Usage Patterns
 
@@ -162,6 +188,8 @@ All models include graph generation in each inference for fair comparison.
 ## Output Files
 
 - `{name}.trace.json`: Chrome trace for Perfetto
-- `summary.json`: Full results with model info and timing
+- `summary.json`: Full results with model info, system info, and timing
 - `timing_table.csv`: CSV with all metrics
 - `timing_table.md`: Markdown summary table
+
+`summary.json` now includes a `system_info` field with CPU model, GPU model/memory, SLURM allocation, and PyTorch/CUDA versions.

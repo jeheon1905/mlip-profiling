@@ -50,11 +50,32 @@ cd "${PROJECT_DIR}" || { echo "Failed to cd to ${PROJECT_DIR}"; exit 1; }
 
 set -e  # Exit on error (after cd to project dir)
 
-# Structure files (can override via environment variable)
-STRUCTURE_FILES="${STRUCTURE_FILES:-${PROJECT_DIR}/structures/Cu_fcc_3x3x3_108atoms.xyz}"
+# =============================================================================
+# Structure files configuration
+# =============================================================================
+# Default: test multiple sizes for scaling analysis
+# Override with STRUCTURE_FILES environment variable for custom selection
+#
+# Available structures:
+#   Cu FCC:  32, 108, 256, 500, 864, 1372, 2048, 2916, 4000 atoms
+#   Water:   30, 150, 300, 750, 1500, 3000, 6000 atoms
+# =============================================================================
 
-# Date and GPU type for results directory
-DATE=$(date +%Y-%m-%d)
+if [[ -n "${STRUCTURE_FILES}" ]]; then
+    # Use custom structure files from environment variable
+    STRUCTURE_ARRAY=(${STRUCTURE_FILES})
+else
+    # Default: representative sizes for scaling analysis
+    STRUCTURE_ARRAY=(
+        "${PROJECT_DIR}/structures/Cu_fcc_3x3x3_108atoms.xyz"
+        "${PROJECT_DIR}/structures/Cu_fcc_5x5x5_500atoms.xyz"
+        "${PROJECT_DIR}/structures/Cu_fcc_7x7x7_1372atoms.xyz"
+        "${PROJECT_DIR}/structures/Cu_fcc_9x9x9_2916atoms.xyz"
+    )
+fi
+
+# Date+time and GPU type for results directory
+DATE=$(date +%Y-%m-%d_%H%M%S)
 GPU_TYPE=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | tr ' ' '_' || echo "unknown_gpu")
 RESULT_BASE="${PROJECT_DIR}/results/${DATE}_${GPU_TYPE}"
 
@@ -98,14 +119,14 @@ run_esen() {
     local model_id=$2
     local output_dir="${RESULT_BASE}/esen/e3nn/${model_id}"
     
-    log "Running eSEN: ${model_id}"
+    log "Running eSEN: ${model_id} (${#STRUCTURE_ARRAY[@]} structures)"
     mkdir -p "${output_dir}"
     
     conda activate mlip-profiling-esen
     python "${PROJECT_DIR}/profile_mlip.py" \
         --model-type esen \
         --model-name "${model_name}" \
-        --structure-files ${STRUCTURE_FILES} \
+        --structure-files "${STRUCTURE_ARRAY[@]}" \
         --device cuda \
         --output-dir "${output_dir}" \
         2>&1 | tee "${output_dir}/run.log"
@@ -117,7 +138,7 @@ run_mace() {
     local backend=$3
     local output_dir="${RESULT_BASE}/mace/${backend}/${model_id}"
     
-    log "Running MACE: ${model_id} (${backend})"
+    log "Running MACE: ${model_id} (${backend}, ${#STRUCTURE_ARRAY[@]} structures)"
     mkdir -p "${output_dir}"
     
     conda activate mlip-profiling-mace
@@ -125,7 +146,7 @@ run_mace() {
         --model-type mace \
         --model-path "${model_path}" \
         --backend "${backend}" \
-        --structure-files ${STRUCTURE_FILES} \
+        --structure-files "${STRUCTURE_ARRAY[@]}" \
         --device cuda \
         --output-dir "${output_dir}" \
         2>&1 | tee "${output_dir}/run.log"
@@ -136,7 +157,7 @@ run_sevenn() {
     local backend=$2
     local output_dir="${RESULT_BASE}/sevenn/${backend}/${model_name}"
     
-    log "Running SevenNet: ${model_name} (${backend})"
+    log "Running SevenNet: ${model_name} (${backend}, ${#STRUCTURE_ARRAY[@]} structures)"
     mkdir -p "${output_dir}"
     
     conda activate mlip-profiling-sevenn
@@ -144,7 +165,7 @@ run_sevenn() {
         --model-type sevenn \
         --model-name "${model_name}" \
         --backend "${backend}" \
-        --structure-files ${STRUCTURE_FILES} \
+        --structure-files "${STRUCTURE_ARRAY[@]}" \
         --device cuda \
         --output-dir "${output_dir}" \
         2>&1 | tee "${output_dir}/run.log"
@@ -219,6 +240,10 @@ mkdir -p logs "${RESULT_BASE}"
 
 log "Starting MLIP profiling on ${GPU_TYPE}"
 log "Results will be saved to: ${RESULT_BASE}"
+log "Testing ${#STRUCTURE_ARRAY[@]} structures:"
+for struct in "${STRUCTURE_ARRAY[@]}"; do
+    log "  - $(basename "${struct}")"
+done
 
 # Run eSEN models
 for model_id in "${!ESEN_MODELS[@]}"; do

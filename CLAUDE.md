@@ -22,9 +22,7 @@ mlip-profiling/
 ├── CLAUDE.md
 ├── scripts/
 │   ├── run_profiling.sh       # SLURM batch profiling (all models)
-│   ├── generate_plots.py      # Plot generation (breakdown, pie, kernel, comparison)
-│   ├── analyze_kernels.py     # CUDA kernel trace analysis
-│   └── visualize_results.py   # Interactive result visualization
+│   └── generate_plots.py      # Plot generation (breakdown, pie, kernel, comparison)
 ├── structures/            # Pre-generated atomic structures (.xyz)
 ├── results/               # Profiling output (git-ignored)
 └── packages/              # MLIP model source codes (modified for profiling)
@@ -69,11 +67,6 @@ mlip-profiling/
 - Uses **effective_time** metric: CPU time for CPU-bound ops, GPU time for GPU-bound ops
 - `CPU_OPERATIONS` allowlist per model_type for explicit classification
 - Merges small operations (<3%) into "Other" in pie charts
-
-### scripts/analyze_kernels.py
-- Deep CUDA kernel-level analysis from Chrome trace files
-- Maps kernels to `record_function` tags via correlation IDs
-- Categorizes kernels (Gemm, Elementwise, Reduction, etc.)
 
 ### scripts/run_profiling.sh
 - SLURM batch script to profile all model configurations

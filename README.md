@@ -20,7 +20,6 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 | **Message Passing** | 4 layers (SO2Conv) | 2 layers (Interaction) | 5 layers (Convolution) |
 | **Force Calculation** | autograd.grad | autograd.grad | autograd.grad |
 | **Backends** | e3nn only | e3nn/cueq/oeq | e3nn/cueq/flash/oeq |
-| **A100 Latency (108 atoms)** | 58.65 ms | 32.64 ms (e3nn) | 53.86 ms (e3nn) |
 
 ### eSEN Inference Flow
 
@@ -40,7 +39,7 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 │  │   ├─ message passing 0-3    ← SO2Conv, edgewise, atomwise        │
 │  │   ├─ balance_channels                                            │
 │  │   └─ final_norm                                                  │
-│  ├─ eSEN::compute_forces       ← autograd.grad (~71% of time)       │
+│  ├─ eSEN::compute_forces       ← autograd.grad (dominant cost)      │
 │  └─ eSEN::process_outputs                                           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -100,9 +99,7 @@ mlip-profiling/
 ├── structure_builders.py        # Structure generation utilities
 ├── scripts/
 │   ├── run_profiling.sh         # SLURM batch profiling script
-│   ├── generate_plots.py        # Plot generation (breakdown, pie, kernel, comparison)
-│   ├── analyze_kernels.py       # CUDA kernel trace analysis
-│   └── visualize_results.py     # Interactive result visualization
+│   └── generate_plots.py        # Plot generation (breakdown, pie, kernel, comparison)
 ├── structures/                  # Pre-generated atomic structures (.xyz)
 ├── results/                     # Profiling output (git-ignored)
 └── packages/                    # Source codes of each MLIP model
@@ -154,13 +151,6 @@ Generated plots per model configuration:
 - **Pie chart** (`_pie.png`) — Proportional time distribution (small ops <3% merged to "Other")
 - **Kernel breakdown** (`_kernels.png`) — GPU kernel categories (Gemm, Elementwise, etc.)
 - **Model comparison** (`_comparison_latency.png`, `_comparison_speedup.png`) — Cross-model latency scaling and backend speedup
-
-### Kernel Analysis
-
-```bash
-# Analyze CUDA kernels from trace files
-python scripts/analyze_kernels.py results/.../*.trace.json
-```
 
 ### Perfetto Trace Viewer
 

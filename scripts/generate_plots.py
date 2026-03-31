@@ -22,6 +22,25 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import numpy as np
 
+# Global font size settings
+plt.rcParams.update({
+    'font.size': 14,
+    'axes.titlesize': 16,
+    'axes.labelsize': 15,
+    'xtick.labelsize': 13,
+    'ytick.labelsize': 13,
+    'legend.fontsize': 13,
+})
+
+# Breakdown plots use larger fonts
+BREAKDOWN_FONTSIZES = {
+    'ytick': 16,
+    'xlabel': 18,
+    'title': 19,
+    'legend': 16,
+    'bar_label': 14,
+}
+
 
 # =============================================================================
 # Configuration
@@ -193,22 +212,22 @@ def plot_operation_breakdown(
     is_cpu = [op[1]["is_cpu_bound"] for op in sorted_ops]
     colors = ["#e67e22" if c else "#2ecc71" for c in is_cpu]
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(14, 8))
     y_pos = np.arange(len(names))
 
     bars = ax.barh(y_pos, eff_times, color=colors)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(names)
+    ax.set_yticklabels(names, fontsize=BREAKDOWN_FONTSIZES['ytick'])
     ax.invert_yaxis()
-    ax.set_xlabel("Time (ms)")
-    ax.set_title(f"{title}\nOperation Breakdown{title_suffix}")
+    ax.set_xlabel("Time (ms)", fontsize=BREAKDOWN_FONTSIZES['xlabel'])
+    ax.set_title(f"{title}\nOperation Breakdown{title_suffix}", fontsize=BREAKDOWN_FONTSIZES['title'])
 
     # Legend
     legend_elements = [
         Patch(facecolor="#2ecc71", label="GPU time"),
         Patch(facecolor="#e67e22", label="CPU time"),
     ]
-    ax.legend(handles=legend_elements)
+    ax.legend(handles=legend_elements, loc="lower right", fontsize=BREAKDOWN_FONTSIZES['legend'])
 
     for bar, t in zip(bars, eff_times):
         if t > 0.1:
@@ -217,7 +236,7 @@ def plot_operation_breakdown(
                 bar.get_y() + bar.get_height() / 2,
                 f"{t:.1f}",
                 va="center",
-                fontsize=8,
+                fontsize=BREAKDOWN_FONTSIZES['bar_label'],
             )
 
     plt.tight_layout()
@@ -296,16 +315,21 @@ def plot_pie_chart(operations: dict, title: str, output_path: Path, model_type: 
             merged_sizes.append(small_total)
             merged_colors.append((0.85, 0.85, 0.85, 1.0))
 
-    # Format: percentage inside pie for all slices
-    wedges, texts, autotexts = ax.pie(
+    # Format: percentage inside pie, labels in legend
+    wedges, _, autotexts = ax.pie(
         merged_sizes,
-        labels=merged_labels,
         autopct="%1.1f%%",
-        pctdistance=0.65,
+        pctdistance=0.75,
         colors=merged_colors,
         startangle=90,
-        labeldistance=1.12,
-        textprops={"fontsize": 9},
+        textprops={"fontsize": 13},
+    )
+    ax.legend(
+        wedges,
+        merged_labels,
+        loc="center left",
+        bbox_to_anchor=(1.0, 0.5),
+        fontsize=12,
     )
     ax.set_title(
         f"{title}\nEffective Time Distribution ({total_ms:.1f} ms total, Leaf Only)"
@@ -477,11 +501,11 @@ def plot_kernel_breakdown(trace_path: Path, title: str, output_path: Path):
         bottom += np.array(row_data)
 
     ax.set_yticks(x)
-    ax.set_yticklabels(op_names, fontsize=9)
+    ax.set_yticklabels(op_names, fontsize=BREAKDOWN_FONTSIZES['ytick'])
     ax.invert_yaxis()
-    ax.set_xlabel("GPU Time (ms)")
-    ax.set_title(f"{title}\nOperation → Kernel Categories (bar total = GPU time from profiler)")
-    ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
+    ax.set_xlabel("GPU Time (ms)", fontsize=BREAKDOWN_FONTSIZES['xlabel'])
+    ax.set_title(f"{title}\nOperation → Kernel Categories (bar total = GPU time from profiler)", fontsize=BREAKDOWN_FONTSIZES['title'])
+    ax.legend(loc="lower right", fontsize=BREAKDOWN_FONTSIZES['legend'])
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -702,10 +726,10 @@ def plot_model_comparison(base: Path, outdir: Path):
             **style,
         )
 
-    ax.set_xlabel("Number of Atoms", fontsize=12)
-    ax.set_ylabel("Inference Latency (ms)", fontsize=12)
+    ax.set_xlabel("Number of Atoms", fontsize=14)
+    ax.set_ylabel("Inference Latency (ms)", fontsize=14)
     ax.set_title("Model Comparison: Inference Latency vs System Size")
-    ax.legend(fontsize=10)
+    ax.legend(fontsize=12)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -754,14 +778,14 @@ def plot_model_comparison(base: Path, outdir: Path):
                     textcoords="offset points",
                     xytext=(0, 10),
                     ha="center",
-                    fontsize=9,
+                    fontsize=11,
                 )
 
         ax.axhline(y=1.0, color="gray", linestyle=":", alpha=0.5)
-        ax.set_xlabel("Number of Atoms", fontsize=12)
-        ax.set_ylabel("Speedup (e3nn → cueq)", fontsize=12)
+        ax.set_xlabel("Number of Atoms", fontsize=14)
+        ax.set_ylabel("Speedup (e3nn \u2192 cueq)", fontsize=14)
         ax.set_title("cuEquivariance Speedup vs System Size")
-        ax.legend(fontsize=10)
+        ax.legend(fontsize=12)
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()

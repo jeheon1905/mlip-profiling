@@ -35,7 +35,14 @@ WRAPPER_OPERATIONS = {
     "message passing 1",
     "message passing 2",
     "message passing 3",
+    # MACE intermediate wrappers (GPU time attributed to children)
     "MACE::Interaction::forward",
+    "MACE::interaction_0",
+    "MACE::interaction_1",
+    "MACE::product_0",
+    "MACE::product_1",
+    "MACE::get_outputs",
+    "MACE::ProductBasis",
 }
 
 # Patterns for grouping similar operations
@@ -662,8 +669,11 @@ def plot_model_comparison(base: Path, outdir: Path):
         latencies = {}
         for struct_key, result in results.items():
             atoms = extract_atom_count(struct_key)
-            if atoms > 0 and "mean_latency_ms" in result:
-                latencies[atoms] = result["mean_latency_ms"]
+            if atoms > 0:
+                # Prefer timeit (no profiler overhead) over profiler latency
+                latency = result.get("timeit_mean_ms") or result.get("mean_latency_ms")
+                if latency is not None:
+                    latencies[atoms] = latency
 
         if latencies:
             model_data[label] = dict(sorted(latencies.items()))

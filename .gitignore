@@ -38,7 +38,9 @@ env/
 
 # Profiling outputs
 profile_traces*/
-*.json
+
+# Package-internal generated files
+packages/**/*.json
 
 # PyTorch
 *.pt

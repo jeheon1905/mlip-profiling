@@ -101,7 +101,7 @@ mlip-profiling/
 │   ├── run_profiling.sh         # SLURM batch profiling script
 │   └── generate_plots.py        # Plot generation (breakdown, pie, kernel, comparison)
 ├── structures/                  # Pre-generated atomic structures (.xyz)
-├── results/                     # Profiling output (git-ignored)
+├── results/                     # Profiling output (git-lfs managed)
 └── packages/                    # Source codes of each MLIP model
     ├── fairchem-core/           # eSEN (modified for profiling)
     ├── mace/                    # MACE (modified for profiling)
@@ -151,6 +151,13 @@ Generated plots per model configuration:
 - **Pie chart** (`_pie.png`) — Proportional time distribution (small ops <3% merged to "Other")
 - **Kernel breakdown** (`_kernels.png`) — GPU kernel categories (Gemm, Elementwise, etc.)
 - **Model comparison** (`_comparison_latency.png`, `_comparison_speedup.png`) — Cross-model latency scaling and backend speedup
+
+### Profiling Report
+
+A detailed analysis of profiling results is available in each result directory as `profiling_report.md`, covering:
+- Operation breakdown per model
+- Graph generation implementation differences
+- cuEquivariance acceleration analysis
 
 ### Perfetto Trace Viewer
 

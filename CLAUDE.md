@@ -24,7 +24,7 @@ mlip-profiling/
 │   ├── run_profiling.sh       # SLURM batch profiling (all models)
 │   └── generate_plots.py      # Plot generation (breakdown, pie, kernel, comparison)
 ├── structures/            # Pre-generated atomic structures (.xyz)
-├── results/               # Profiling output (git-ignored)
+├── results/               # Profiling output (git-lfs managed)
 └── packages/              # MLIP model source codes (modified for profiling)
     ├── fairchem-core/     # eSEN models (fairchem v2.15.0)
     ├── mace/              # MACE models

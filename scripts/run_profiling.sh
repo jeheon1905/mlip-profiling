@@ -2,6 +2,7 @@
 #SBATCH --job-name=mlip-profiling
 #SBATCH --partition=GPU_A100_2
 #SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=1
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/profiling_%j.out
 #SBATCH --error=logs/profiling_%j.err

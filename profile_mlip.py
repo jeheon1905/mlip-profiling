@@ -365,6 +365,9 @@ class MACEAdapter(ModelAdapter):
         "MACE::SymmetricContraction",
         "MACE::Interaction::forward",
         "MACE::Interaction::skip_tp",
+        "MACE::Interaction::linear_up",
+        "MACE::Interaction::conv_weights",
+        "MACE::Interaction::message_passing",
     ]
     
     AVAILABLE_BACKENDS = ["e3nn", "cueq", "oeq"]

@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""Post-process pandoc pptx to fix multi-image slides.
+
+Pandoc 2.x splits multiple images under one heading into separate slides,
+and only embeds the first image — subsequent ones become text-only orphans.
+
+This script:
+  1. Parses slides.md to learn which slide titles map to which images
+  2. Removes orphan slides (pandoc-generated splits with no real content)
+  3. Lays out all intended images on the correct parent slide
+
+Usage:
+    python scripts/postprocess_slides.py slides.pptx slides.md [--resource-path DIR]
+
+If --resource-path is not given, images are resolved relative to slides.md's directory.
+"""
+from __future__ import annotations
+
+import io
+import re
+import sys
+from pathlib import Path
+
+try:
+    from pptx import Presentation
+    from pptx.util import Inches, Emu
+except ImportError:
+    print("python-pptx is required: pip install python-pptx", file=sys.stderr)
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Parse slides.md to extract slide → images mapping
+# ---------------------------------------------------------------------------
+
+def parse_slide_images(md_path: Path, resource_path: Path) -> list[dict]:
+    """Parse slides.md and return list of {title, images} per slide."""
+    text = md_path.read_text(encoding="utf-8")
+
+    # Strip YAML frontmatter
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end != -1:
+            text = text[end + 5:]
+
+    # Split on ## headings
+    slides = []
+    matches = list(re.finditer(r"(?m)^##\s+(.+)$", text))
+    for i, m in enumerate(matches):
+        title = m.group(1).strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        block = text[start:end]
+
+        # Extract image references
+        images = []
+        for img_match in re.finditer(r"!\[([^\]]*)\]\(([^)]+)\)", block):
+            alt = img_match.group(1)
+            src = img_match.group(2)
+            full_path = resource_path / src
+            if full_path.exists():
+                images.append({"alt": alt, "path": full_path})
+        slides.append({"title": title, "images": images})
+
+    return slides
+
+
+# ---------------------------------------------------------------------------
+# PPTX helpers
+# ---------------------------------------------------------------------------
+
+def get_slide_title(slide) -> str:
+    """Extract title text from a slide."""
+    for shape in slide.shapes:
+        try:
+            if shape.placeholder_format is not None and shape.placeholder_format.idx == 0:
+                return shape.text_frame.text.strip()
+        except (ValueError, AttributeError):
+            pass
+    # Fallback: first text shape
+    for shape in slide.shapes:
+        if shape.has_text_frame and shape.text_frame.text.strip():
+            return shape.text_frame.text.strip()
+    return ""
+
+
+def get_slide_images(slide) -> list:
+    """Return image shapes on a slide."""
+    return [s for s in slide.shapes if hasattr(s, "image")]
+
+
+def has_real_content(slide) -> bool:
+    """Check if slide has meaningful content beyond just a caption."""
+    images = get_slide_images(slide)
+    text_shapes = [s for s in slide.shapes if s.has_text_frame]
+    # Title placeholder (idx=0) with real title counts
+    for s in text_shapes:
+        try:
+            if s.placeholder_format is not None and s.placeholder_format.idx == 0:
+                if len(s.text_frame.text.strip().split()) > 4:
+                    return True
+        except (ValueError, AttributeError):
+            pass
+    # Has bullets or paragraphs in body
+    for s in text_shapes:
+        try:
+            if s.placeholder_format is not None and s.placeholder_format.idx == 1:
+                text = s.text_frame.text.strip()
+                if text and "\n" in text:
+                    return True
+        except (ValueError, AttributeError):
+            pass
+    return len(images) > 0
+
+
+def normalize(s: str) -> str:
+    """Normalize title for fuzzy matching. Replaces smart quotes and collapses whitespace."""
+    s = s.strip().lower()
+    # Normalize smart quotes to ASCII
+    s = s.replace("\u2018", "'").replace("\u2019", "'")  # ' '
+    s = s.replace("\u201c", '"').replace("\u201d", '"')  # " "
+    s = s.replace("\u2013", "-").replace("\u2014", "-")  # – —
+    s = re.sub(r"\s+", " ", s)
+    return s[:80]
+
+
+def layout_images_on_slide(slide, image_paths: list[Path], slide_w, slide_h):
+    """Add images to a slide in a responsive grid, preserving aspect ratio."""
+    n = len(image_paths)
+    if n == 0:
+        return
+
+    # Content area below header bar
+    top = Inches(1.3)
+    bottom_margin = Inches(0.2)
+    left = Inches(0.4)
+    right_margin = Inches(0.4)
+    gap = Inches(0.2)
+
+    avail_w = slide_w - left - right_margin
+    avail_h = slide_h - top - bottom_margin
+
+    if n == 1:
+        cols, rows = 1, 1
+    elif n == 2:
+        cols, rows = 2, 1
+    elif n == 3:
+        cols, rows = 3, 1
+    elif n <= 4:
+        cols, rows = 2, 2
+    else:
+        cols = 3
+        rows = (n + cols - 1) // cols
+
+    cell_w = int((avail_w - gap * (cols - 1)) / cols)
+    cell_h = int((avail_h - gap * (rows - 1)) / rows)
+
+    for i, img_path in enumerate(image_paths):
+        col = i % cols
+        row = i // cols
+        cell_x = int(left + col * (cell_w + gap))
+        cell_y = int(top + row * (cell_h + gap))
+
+        # Add image without specifying dimensions to get native size
+        pic = slide.shapes.add_picture(str(img_path), cell_x, cell_y)
+
+        # Read native size (the actual image dimensions in EMU)
+        native_w = pic.width
+        native_h = pic.height
+
+        # Fit within cell while preserving aspect ratio
+        if native_w > 0 and native_h > 0:
+            scale = min(cell_w / native_w, cell_h / native_h)
+            new_w = int(native_w * scale)
+            new_h = int(native_h * scale)
+        else:
+            new_w, new_h = cell_w, cell_h
+
+        pic.width = new_w
+        pic.height = new_h
+
+        # Center in cell
+        pic.left = cell_x + (cell_w - new_w) // 2
+        pic.top = cell_y + (cell_h - new_h) // 2
+
+
+# ---------------------------------------------------------------------------
+# Main postprocess logic
+# ---------------------------------------------------------------------------
+
+def postprocess(pptx_path: Path, md_path: Path, resource_path: Path):
+    slide_specs = parse_slide_images(md_path, resource_path)
+    prs = Presentation(str(pptx_path))
+    slide_w = prs.slide_width
+    slide_h = prs.slide_height
+    slides = list(prs.slides)
+
+    if not slide_specs:
+        print("No slide specs found in markdown.")
+        return
+
+    # Build lookup: normalized title prefix → spec
+    spec_lookup = {}
+    for spec in slide_specs:
+        key = normalize(spec["title"])
+        spec_lookup[key] = spec
+
+    # Identify parent slides (match to spec by title) and orphans
+    orphan_indices = set()
+    parent_map = {}  # slide_index → spec
+    last_parent_idx = None  # track for orphan → parent note transfer
+    orphan_to_parent = {}  # orphan_idx → parent_idx
+
+    for i, slide in enumerate(slides):
+        title = normalize(get_slide_title(slide))
+        # Try matching to a spec
+        matched = False
+        if title:  # skip empty titles
+            best_score = 0
+            best_spec = None
+            for key, spec in spec_lookup.items():
+                # Score by longest common prefix
+                min_len = min(len(title), len(key))
+                common = 0
+                for c1, c2 in zip(title, key):
+                    if c1 == c2:
+                        common += 1
+                    else:
+                        break
+                if common >= 20 and common > best_score:
+                    best_score = common
+                    best_spec = spec
+            if best_spec:
+                parent_map[i] = best_spec
+                matched = True
+                last_parent_idx = i
+
+        if not matched:
+            # Never remove the first slide (title slide) or slides with notes
+            if i == 0:
+                last_parent_idx = 0
+                continue
+            if has_real_content(slide):
+                last_parent_idx = i
+                continue
+            # This is an orphan
+            orphan_indices.add(i)
+            if last_parent_idx is not None:
+                orphan_to_parent[i] = last_parent_idx
+
+    # Transfer notes from orphan slides to their parent
+    for orphan_idx, parent_idx in orphan_to_parent.items():
+        orphan = slides[orphan_idx]
+        parent = slides[parent_idx]
+        if orphan.has_notes_slide:
+            orphan_notes = orphan.notes_slide.notes_text_frame.text.strip()
+            if orphan_notes and not parent.has_notes_slide:
+                # Copy notes to parent (pandoc may have put notes on orphan)
+                parent_notes_slide = parent.notes_slide  # creates if needed
+                parent_notes_slide.notes_text_frame.text = orphan_notes
+
+    # Remove existing images from parent slides (will re-add from source)
+    for idx, spec in parent_map.items():
+        if not spec["images"]:
+            continue
+        slide = slides[idx]
+        for img_shape in get_slide_images(slide):
+            sp = img_shape._element
+            sp.getparent().remove(sp)
+
+        # Add all intended images
+        image_paths = [img["path"] for img in spec["images"]]
+        layout_images_on_slide(slide, image_paths, slide_w, slide_h)
+
+    # Remove orphan slides
+    if orphan_indices:
+        sldIdLst = prs.slides._sldIdLst
+        sldIds = list(sldIdLst)
+        for idx in sorted(orphan_indices, reverse=True):
+            if idx < len(sldIds):
+                sldIdLst.remove(sldIds[idx])
+
+    prs.save(str(pptx_path))
+    total = len(prs.slides)
+    img_slides = sum(1 for spec in parent_map.values() if spec["images"])
+    print(f"Post-processed: {len(orphan_indices)} orphan(s) removed, "
+          f"{img_slides} slide(s) got images. Result: {total} slides. "
+          f"Saved {pptx_path}")
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    resource_path = None
+
+    # Parse --resource-path
+    filtered = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--resource-path" and i + 1 < len(args):
+            resource_path = Path(args[i + 1])
+            i += 2
+        else:
+            filtered.append(args[i])
+            i += 1
+
+    if len(filtered) < 2:
+        print("usage: python scripts/postprocess_slides.py slides.pptx slides.md "
+              "[--resource-path DIR]", file=sys.stderr)
+        return 2
+
+    pptx_path = Path(filtered[0])
+    md_path = Path(filtered[1])
+
+    if not pptx_path.exists():
+        print(f"pptx not found: {pptx_path}", file=sys.stderr)
+        return 1
+    if not md_path.exists():
+        print(f"markdown not found: {md_path}", file=sys.stderr)
+        return 1
+
+    if resource_path is None:
+        resource_path = md_path.parent
+
+    postprocess(pptx_path, md_path, resource_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

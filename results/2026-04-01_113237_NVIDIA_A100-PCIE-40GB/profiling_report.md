@@ -397,7 +397,18 @@ At 2,916 atoms, SevenNet's `force_output` speedup grows to 6.61x (191.3 → 28.9
 
 SevenNet (cueq) is 1.46x faster than MACE (cueq) at 1,372 atoms. At 2,916 atoms where only cueq results are available, SevenNet (cueq) at 72.1 ms is 2.01x faster than MACE (cueq) at 145.0 ms.
 
-**Idle/Overhead in kernel breakdown**: The cueq kernel plots show a larger Idle/Overhead (gray) fraction compared to e3nn. This is not a regression — it reflects the fact that cuEquivariance's fused kernels execute faster, but the CPU-side dispatch and kernel launch latency remain unchanged. As GPU compute shrinks, these fixed-cost gaps between kernels become a larger proportion of the annotation duration. This is essentially Amdahl's law applied to the CPU–GPU launch pipeline: further GPU kernel speedups alone will yield diminishing returns.
+**GPU Pipeline Starvation in cueq kernel breakdown**: The cueq kernel plots show a larger Idle/Overhead (gray) component compared to e3nn — not only in proportion but also in **absolute time**. Trace-level gap analysis of the backward pass at 500 atoms:
+
+| Metric | MACE e3nn | MACE cueq | SevenNet e3nn | SevenNet cueq |
+|--------|----------:|----------:|--------------:|--------------:|
+| Kernel total time | 59.3 ms | 4.9 ms | 35.4 ms | 3.6 ms |
+| **Inter-kernel gap total** | **0.7 ms** | **15.0 ms** | **17.3 ms** | **24.1 ms** |
+| Avg kernel duration | 104 μs | 13 μs | 28 μs | 6 μs |
+| Avg inter-kernel gap | 1.2 μs | 41 μs | 14 μs | 39 μs |
+
+The root cause is **GPU pipeline starvation**. With e3nn, each kernel runs 100–240 μs, long enough to hide the CPU's autograd dispatch overhead behind GPU execution. With cueq, kernels shrink to 6–36 μs, but the CPU still walks the same Python autograd graph (~40 μs per dispatch) — so the GPU idles waiting for the next launch. The gap distribution confirms this: e3nn gaps are 1–10 μs (hardware launch latency), while cueq gaps shift to 10–100 μs (CPU autograd overhead).
+
+At 1,372 atoms, the gap fraction improves for both models — MACE from 75% to 35%, SevenNet from 87% to 78% — as larger systems increase per-kernel compute, partially re-hiding CPU overhead behind GPU execution.
 
 ---
 
@@ -431,5 +442,5 @@ Cross-model:
 sbatch scripts/run_profiling.sh
 
 # Generate plots (all structure sizes)
-python scripts/generate_plots.py results/{result_dir} --all-structures
+python scripts/generate_plots.py results/{result_dir}
 ```

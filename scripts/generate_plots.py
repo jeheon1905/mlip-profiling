@@ -546,11 +546,6 @@ def main():
         help="Output directory for plots (default: {results_dir}/plots)",
     )
     parser.add_argument(
-        "--all-structures",
-        action="store_true",
-        help="Generate plots for all structure sizes (default: smallest only)",
-    )
-    parser.add_argument(
         "--structure",
         type=str,
         default=None,
@@ -593,12 +588,9 @@ def main():
                 print(f"  Structure '{args.structure}' not found, skipping")
                 continue
             structure_keys = matching
-        elif args.all_structures:
-            # All structures, sorted by atom count
-            structure_keys = sorted(results.keys(), key=extract_atom_count)
         else:
-            # Default: smallest structure only
-            structure_keys = [sorted(results.keys(), key=extract_atom_count)[0]]
+            # Default: all structures, sorted by atom count
+            structure_keys = sorted(results.keys(), key=extract_atom_count)
 
         for struct_key in structure_keys:
             result = results[struct_key]
@@ -610,7 +602,7 @@ def main():
 
             # Extract atom count for label
             atom_count = extract_atom_count(struct_key)
-            struct_suffix = f"_{atom_count}atoms" if args.all_structures or args.structure else ""
+            struct_suffix = f"_{atom_count}atoms"
             struct_label = f"{label} ({atom_count} atoms)" if atom_count else label
 
             print(f"  Structure: {struct_key}")

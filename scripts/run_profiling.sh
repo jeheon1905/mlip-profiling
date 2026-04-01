@@ -19,17 +19,23 @@
 #
 # Output structure:
 #   results/
-#   └── YYYY-MM-DD_<gpu_type>/
+#   └── YYYY-MM-DD_HHMMSS_<gpu_type>/
 #       ├── esen/
 #       │   └── e3nn/
-#       │       ├── summary.json
-#       │       └── *.trace.json
+#       │       └── <model_id>/
+#       │           ├── summary.json
+#       │           ├── *.trace.json
+#       │           └── run.log
 #       ├── mace/
 #       │   ├── e3nn/
+#       │   │   └── <model_id>/
 #       │   └── cueq/
+#       │       └── <model_id>/
 #       └── sevenn/
 #           ├── e3nn/
+#           │   └── <model_id>/
 #           └── cueq/
+#               └── <model_id>/
 # =============================================================================
 
 # =============================================================================
@@ -100,7 +106,7 @@ declare -A ESEN_MODELS=(
 )
 
 declare -A MACE_MODELS=(
-    ["mace-mp-small"]="${MACE_MODEL_PATH:-${HOME}/Models/mace/mace-mp-0-small.model}"
+    ["mace-mp-medium"]="${MACE_MODEL_PATH:-${HOME}/Models/mace/mace-mp-0-medium.model}"
 )
 MACE_BACKENDS=("e3nn" "cueq")
 

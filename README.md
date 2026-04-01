@@ -84,8 +84,10 @@ Performance profiling tools for Machine Learning Interatomic Potential (MLIP) mo
 │  │   ├─ SevenNet::N_self_interaction_2                              │
 │  │   ├─ SevenNet::N_self_connection_outro                           │
 │  │   └─ SevenNet::N_equivariant_gate                                │
-│  ├─ SevenNet::reduce_output            (energy sum)                 │
-│  └─ [Force: autograd.grad]             ← backward                   │
+│  ├─ SevenNet::reduce_input_to_hidden   (reduce to hidden)           │
+│  ├─ SevenNet::reduce_hidden_to_energy  (energy prediction)          │
+│  ├─ SevenNet::rescale_atomic_energy    (shift/scale)                │
+│  └─ SevenNet::force_output             ← autograd.grad (backward)   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -102,6 +104,8 @@ mlip-profiling/
 │   └── generate_plots.py        # Plot generation (breakdown, pie, kernel, comparison)
 ├── structures/                  # Pre-generated atomic structures (.xyz)
 ├── results/                     # Profiling output (git-lfs managed)
+├── tests/                       # Test suite
+├── logs/                        # SLURM job logs (git-ignored)
 └── packages/                    # Source codes of each MLIP model
     ├── fairchem-core/           # eSEN (modified for profiling)
     ├── mace/                    # MACE (modified for profiling)
@@ -147,7 +151,7 @@ python scripts/generate_plots.py results/2026-03-30_201144_NVIDIA_A100-PCIE-40GB
 ```
 
 Generated plots per model configuration:
-- **Operation breakdown** (`_breakdown_leaf.png`) — Stacked bar chart of per-operation effective time
+- **Operation breakdown** (`_breakdown.png`) — Stacked bar chart of per-operation effective time
 - **Pie chart** (`_pie.png`) — Proportional time distribution (small ops <3% merged to "Other")
 - **Kernel breakdown** (`_kernels.png`) — GPU kernel categories (Gemm, Elementwise, etc.)
 - **Model comparison** (`_comparison_latency.png`, `_comparison_speedup.png`) — Cross-model latency scaling and backend speedup
@@ -406,10 +410,6 @@ python profile_mlip.py \
 
 Results are saved as Chrome trace format (`.json`) in the output directory.  
 Open with https://ui.perfetto.dev or `chrome://tracing`.
-
-### Analysis using Perfetto
-
-...
 
 ---
 

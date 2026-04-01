@@ -48,6 +48,7 @@ packages/**/*.json
 *.model
 
 # Logs
+logs/
 *.log
 
 # OS

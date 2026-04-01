@@ -39,6 +39,7 @@ import platform
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import torch
@@ -198,10 +199,12 @@ class ModelAdapter(ABC):
 # eSEN Adapter
 # =============================================================================
 
+
 class ESENAdapter(ModelAdapter):
     """Adapter for eSEN/UMA models from fairchem."""
     
-    TRACKED_OPERATIONS = [
+    # Static operations (model-independent)
+    _STATIC_OPERATIONS = [
         # profile_mlip.py (adapter) - data preparation
         "eSEN::data_preparation",
         # predict.py - predict stages
@@ -217,10 +220,7 @@ class ESENAdapter(ModelAdapter):
         "obtain rotmat wigner original",
         "atom embedding",
         "edge embedding",
-        "message passing 0",
-        "message passing 1",
-        "message passing 2",
-        "message passing 3",
+        # "message passing {i}" — added dynamically based on model's num_layers
         "balance_channels",
         "final_norm",
         # escn_md.py - force/stress computation (backward)
@@ -246,6 +246,7 @@ class ESENAdapter(ModelAdapter):
     ]
     
     def __init__(self):
+        """Initialize adapter with all attributes set to None (populated by load())."""
         self.predictor = None
         self.model_name = None
         self.device = None
@@ -253,6 +254,7 @@ class ESENAdapter(ModelAdapter):
         self._cutoff = None
         self._max_neighbors = None
         self._external_graph_gen = None
+        self._tracked_operations = None
     
     def load(
         self,
@@ -279,7 +281,7 @@ class ESENAdapter(ModelAdapter):
         self.inference_settings = inference_settings or inference_settings_default()
         
         try:
-                self.predictor = pretrained_mlip.get_predict_unit(
+            self.predictor = pretrained_mlip.get_predict_unit(
                 model_name=model_name,
                 inference_settings=self.inference_settings,
                 device=device,
@@ -293,6 +295,16 @@ class ESENAdapter(ModelAdapter):
         self._cutoff = self.predictor.model.module.backbone.cutoff
         self._max_neighbors = self.predictor.model.module.backbone.max_neighbors
         self._external_graph_gen = bool(self.inference_settings.external_graph_gen)
+        
+        # Build tracked operations dynamically based on model's num_layers
+        num_layers = self.predictor.model.module.backbone.num_layers
+        layer_ops = [f"message passing {i}" for i in range(num_layers)]
+        # Insert layer ops after "edge embedding" in the static list
+        ops = list(self._STATIC_OPERATIONS)
+        idx = ops.index("edge embedding") + 1
+        for i, op in enumerate(layer_ops):
+            ops.insert(idx + i, op)
+        self._tracked_operations = ops
     
     def run_inference(self, atoms: Atoms) -> Any:
         from fairchem.core.datasets.atomic_data import AtomicData, atomicdata_list_to_batch
@@ -315,7 +327,7 @@ class ESENAdapter(ModelAdapter):
     
     @property
     def tracked_operations(self) -> list[str]:
-        return self.TRACKED_OPERATIONS
+        return self._tracked_operations
     
     @property
     def model_info(self) -> dict:
@@ -373,6 +385,7 @@ class MACEAdapter(ModelAdapter):
     AVAILABLE_BACKENDS = ["e3nn", "cueq", "oeq"]
     
     def __init__(self):
+        """Initialize adapter with all attributes set to None (populated by load())."""
         self.model = None
         self.model_path = None
         self.device = None
@@ -416,6 +429,10 @@ class MACEAdapter(ModelAdapter):
             )
         
         # Get model dtype and set as default
+        # NOTE: This mutates global PyTorch state. MACE requires matching
+        # default dtype for correct tensor creation during inference.
+        # If profiling multiple model types sequentially, be aware this
+        # persists across adapter boundaries.
         model_dtype = next(self.model.parameters()).dtype
         self.dtype = model_dtype
         torch.set_default_dtype(model_dtype)
@@ -499,7 +516,8 @@ class SevenNetAdapter(ModelAdapter):
       - oeq: OpenEquivariance
     """
     
-    TRACKED_OPERATIONS = [
+    # Static operations (model-independent)
+    _STATIC_OPERATIONS = [
         # Top-level profiling
         "forward",
         "generate_graph",
@@ -507,48 +525,23 @@ class SevenNetAdapter(ModelAdapter):
         "SevenNet::edge_embedding",
         "SevenNet::onehot_idx_to_onehot",
         "SevenNet::onehot_to_feature_x",
-        # Interaction blocks (5 layers for 7net-0)
-        # Layer 0
-        "SevenNet::0_self_connection_intro",
-        "SevenNet::0_self_interaction_1",
-        "SevenNet::0_convolution",
-        "SevenNet::0_self_interaction_2",
-        "SevenNet::0_self_connection_outro",
-        "SevenNet::0_equivariant_gate",
-        # Layer 1
-        "SevenNet::1_self_connection_intro",
-        "SevenNet::1_self_interaction_1",
-        "SevenNet::1_convolution",
-        "SevenNet::1_self_interaction_2",
-        "SevenNet::1_self_connection_outro",
-        "SevenNet::1_equivariant_gate",
-        # Layer 2
-        "SevenNet::2_self_connection_intro",
-        "SevenNet::2_self_interaction_1",
-        "SevenNet::2_convolution",
-        "SevenNet::2_self_interaction_2",
-        "SevenNet::2_self_connection_outro",
-        "SevenNet::2_equivariant_gate",
-        # Layer 3
-        "SevenNet::3_self_connection_intro",
-        "SevenNet::3_self_interaction_1",
-        "SevenNet::3_convolution",
-        "SevenNet::3_self_interaction_2",
-        "SevenNet::3_self_connection_outro",
-        "SevenNet::3_equivariant_gate",
-        # Layer 4
-        "SevenNet::4_self_connection_intro",
-        "SevenNet::4_self_interaction_1",
-        "SevenNet::4_convolution",
-        "SevenNet::4_self_interaction_2",
-        "SevenNet::4_self_connection_outro",
-        "SevenNet::4_equivariant_gate",
+        # Interaction layer ops — added dynamically based on config's num_convolution
         # Output blocks
         "SevenNet::reduce_input_to_hidden",
         "SevenNet::reduce_hidden_to_energy",
         "SevenNet::rescale_atomic_energy",
-        "SevenNet::reduce_total_enegy",
+        "SevenNet::reduce_total_enegy",  # upstream typo (missing 'r' in energy)
         "SevenNet::force_output",
+    ]
+    
+    # Per-layer operation suffixes (from NequIP_interaction_block)
+    _LAYER_OP_SUFFIXES = [
+        "self_connection_intro",
+        "self_interaction_1",
+        "convolution",
+        "self_interaction_2",
+        "self_connection_outro",
+        "equivariant_gate",
     ]
     
     AVAILABLE_BACKENDS = ["e3nn", "cueq", "flash", "oeq"]
@@ -562,6 +555,7 @@ class SevenNetAdapter(ModelAdapter):
     ]
     
     def __init__(self):
+        """Initialize adapter with all attributes set to None (populated by load())."""
         self.model = None
         self.model_name = None
         self.model_path = None
@@ -571,6 +565,7 @@ class SevenNetAdapter(ModelAdapter):
         self.modal = None
         self.backend = None
         self._config = None
+        self._tracked_operations = None
     
     def load(
         self,
@@ -633,6 +628,20 @@ class SevenNetAdapter(ModelAdapter):
         self.type_map = self.model.type_map
         self.cutoff = self.model.cutoff
         
+        # Build tracked operations dynamically based on num_convolution_layer
+        import sevenn._keys as KEY
+        num_conv = self._config.get(KEY.NUM_CONVOLUTION, 5)
+        ops = list(self._STATIC_OPERATIONS)
+        # Insert layer ops before the output blocks
+        idx = ops.index("SevenNet::reduce_input_to_hidden")
+        layer_ops = []
+        for t in range(num_conv):
+            for suffix in self._LAYER_OP_SUFFIXES:
+                layer_ops.append(f"SevenNet::{t}_{suffix}")
+        for i, op in enumerate(layer_ops):
+            ops.insert(idx + i, op)
+        self._tracked_operations = ops
+        
         # Handle modal for multi-fidelity models
         if self.model.modal_map:
             if not modal:
@@ -663,7 +672,7 @@ class SevenNetAdapter(ModelAdapter):
     
     @property
     def tracked_operations(self) -> list[str]:
-        return self.TRACKED_OPERATIONS
+        return self._tracked_operations
     
     @property
     def model_info(self) -> dict:
@@ -716,6 +725,10 @@ def get_adapter(model_type: str) -> ModelAdapter:
 # Profiling
 # =============================================================================
 
+# Default warmup iterations for QPS measurement (before timeit.repeat)
+QPS_WARMUP_ITERS = 10
+
+
 def run_profiling(
     adapter: ModelAdapter,
     device: str,
@@ -724,7 +737,7 @@ def run_profiling(
     wait_steps: int = 5,
     warmup_steps: int = 5,
     active_steps: int = 5,
-    summary_callback: callable = None,
+    summary_callback: Callable | None = None,
     timeit_number: int = 10,
     timeit_repeat: int = 5,
 ) -> dict:
@@ -804,7 +817,7 @@ def run_profiling(
             qps, ns_per_day, timeit_mean_ms, timeit_std_ms = get_qps(
                 inference_fn=run_inference,
                 device=device,
-                warmups=10,
+                warmups=QPS_WARMUP_ITERS,
                 timeiters=timeit_number,
                 repeats=timeit_repeat,
             )
@@ -1015,9 +1028,6 @@ After profiling:
         parser.error("--backend flash is not supported by MACE. Use e3nn, cueq, or oeq.")
     if args.model_type == "sevenn" and not (args.model_name or args.model_path):
         parser.error("--model-name or --model-path required for SevenNet models")
-    
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise DeviceError("CUDA requested but torch.cuda.is_available() is False")
     
     # Validate device
     validate_device(args.device)

@@ -120,6 +120,8 @@ However, they differ significantly in architecture, graph construction strategy,
 | | eSEN | MACE | SevenNet |
 |---|---|---|---|
 | **Architecture** | SO(2)-equivariant convolution | Higher-order message passing with symmetric contraction | E(3)-equivariant with tensor product convolution |
+| **Parameters** | 6.3M | 3.8M | 0.8M |
+| **Cutoff Radius** | 6.0 Å | 6.0 Å | 5.0 Å |
 | **Graph Generation** | GPU (nvalchemiops) | CPU (matscipy) | CPU (ASE/numpy) |
 | **Message Passing Layers** | 4 (SO2Conv) | 2 (Interaction + SymmetricContraction) | 5 (Convolution + Gate) |
 | **Force Computation** | autograd.grad | autograd.grad | autograd.grad |
@@ -132,7 +134,7 @@ eSEN (Equivariant Scalable Energy Network) from Meta's fairchem uses SO(2)-equiv
 - **Graph construction on GPU**: Uses `nvalchemiops` for neighbor list construction, avoiding CPU-GPU data transfer
 - **4 message passing layers**: Each layer contains SO2Conv + edgewise + atomwise sub-operations
 - **Wigner/rotation matrices**: Pre-computed rotational features (`obtain wigner / rotmat original`)
-- **Dominant cost**: Force computation via `autograd.grad` is the dominant cost (~70% of end-to-end latency)
+- **Dominant cost**: Force computation via `autograd.grad` accounts for ~53% of traced time at 500 atoms. This single call traverses the entire computation graph in reverse, so its cost is the sum of backward gradients for all forward operations (SO2Conv, edgewise, atomwise, etc.). The profiler records only generic autograd ops (`MmBackward0`, `MulBackward0`, etc.) inside this call, making it impossible to attribute backward cost to individual forward operations.
 
 ### 2.3 MACE
 
@@ -141,7 +143,7 @@ MACE (Multi Atomic Cluster Expansion) uses higher-order equivariant message pass
 - **Graph construction on CPU**: `matscipy`-based neighbor list, executed on CPU before transfer to GPU
 - **2 interaction layers**: Each layer includes linear_up → conv_weights → message_passing → skip_tp, followed by ProductBasis → SymmetricContraction
 - **SymmetricContraction**: A distinctive operation absent in other models — compresses high-order tensor products to invariant features
-- **Moderate force cost**: Force computation is ~43% of traced time; graph generation on CPU is a significant portion (~36%)
+- **Force computation**: `compute_forces` (`autograd.grad`) is ~43% of traced time. As with all models, the backward pass is a single monolithic traversal of the full computation graph — the profiler cannot separate, e.g., gradients originating from `message_passing` vs. `SymmetricContraction`. Graph generation on CPU is also a significant portion (~31–36%).
 
 ### 2.4 SevenNet
 
@@ -149,7 +151,7 @@ SevenNet (Scalable E(3)-Equivariant Network) from SNU uses standard tensor produ
 
 - **Graph construction on CPU**: ASE/numpy-based neighbor list
 - **5 convolution layers**: Each includes self_connection_intro → self_interaction_1 → convolution → self_interaction_2 → self_connection_outro → equivariant_gate
-- **Force computation dominance**: `force_output` (autograd) is the most expensive single operation
+- **Force computation dominance**: `force_output` (`autograd.grad`) accounts for ~63% of traced time at 500 atoms. Like the other models, this backward pass encompasses gradients from all 5 convolution layers, gates, and self-interactions combined, without per-operation attribution.
 - **Best cuEquivariance scaling**: Shows the largest speedup from cuEquivariance (up to ~4x at 2,916 atoms)
 
 ---
@@ -249,7 +251,7 @@ At 500 atoms, force computation (`autograd.grad`) and SO2Conv together account f
 ![MACE e3nn 500 atoms pie chart](plots/mace_e3nn_mace-mp-small_500atoms_pie.png)
 ![MACE e3nn 500 atoms kernel breakdown](plots/mace_e3nn_mace-mp-small_500atoms_kernels.png)
 
-MACE's profile at 500 atoms is split between GPU compute (force + equivariant operations) and CPU graph generation. The kernel breakdown shows that `compute_forces` is primarily **Gemm** kernels, while `message_passing` uses **Scatter/Gather** for neighborhood aggregation and **Gemm** for linear projections. `SymmetricContraction` is heavily **Elementwise** — reflecting the many-body contraction operations. Note that `generate_graph` (matscipy, CPU) does not appear in the kernel plot since it runs entirely on CPU.
+MACE's profile at 500 atoms is split between GPU compute (force + equivariant operations) and CPU graph generation. The kernel breakdown shows that `compute_forces` is primarily **Gemm** kernels, while `message_passing` uses **Scatter/Gather** for neighborhood aggregation and **Gemm** for linear projections. `SymmetricContraction` is heavily **Elementwise** — reflecting the many-body contraction operations. `generate_graph` (matscipy, CPU) shows minimal GPU kernel activity in the kernel plot, as its compute runs entirely on CPU.
 
 #### SevenNet (e3nn) — 500 atoms
 
@@ -289,7 +291,7 @@ The three models use fundamentally different strategies for graph (neighbor list
 
 **Analysis**:
 
-- **eSEN** performs graph generation on GPU using nvalchemiops. The time is nearly constant (~11 ms) regardless of system size, as the GPU parallelism absorbs the workload. However, this comes at the cost of GPU memory usage, contributing to OOM at 2,916 atoms.
+- **eSEN** performs graph generation on GPU using nvalchemiops. The time is nearly constant (~11 ms) regardless of system size, as the GPU parallelism absorbs the workload. eSEN hits OOM at 2,916 atoms on A100-40GB.
 
 - **MACE** uses matscipy's `neighbour_list()` on CPU. This is the most expensive graph generation, scaling superlinearly from 13.6 ms (108 atoms) to 80.0 ms (2,916 atoms). Because this runs on CPU, it appears in `cpu_time` while the GPU sits idle — making it a clear bottleneck at all sizes. At 108 atoms, graph generation accounts for 36% of traced time.
 
@@ -318,7 +320,7 @@ cuEquivariance replaces the standard e3nn tensor product operations with NVIDIA-
 
 3. **Speedup grows with system size** for both models. This is expected because larger systems have more tensor product operations to parallelize, amortizing the kernel launch overhead.
 
-4. **Why the difference?** SevenNet's architecture relies heavily on tensor product convolutions (5 layers), which are directly accelerated by cuEquivariance. MACE's bottleneck is more distributed — `generate_graph` (CPU, unaffected by cueq), `compute_forces` (autograd, unaffected), and `SymmetricContraction` (partially accelerated). According to Amdahl's law, the non-acceleratable portions limit MACE's overall speedup.
+4. **Why the difference?** cuEquivariance accelerates both forward tensor products and their backward gradients (inside `compute_forces`/`force_output`). SevenNet's 5 tensor product convolution layers make its backward pass heavily dependent on these operations — `force_output` speedup reaches 6.5x at 2,916 atoms. MACE benefits too (`compute_forces` speedup: 5.2x at 2,916 atoms), but its bottleneck includes `generate_graph` (CPU, unaffected by cueq), which limits the overall end-to-end speedup per Amdahl's law.
 
 **Latency at 2,916 atoms** — the practical large-system comparison:
 

@@ -3,7 +3,7 @@
 Generate operation breakdown and kernel analysis plots from profiling results.
 
 Usage:
-    python scripts/generate_plots.py results/2026-03-30_NVIDIA_A100-PCIE-40GB
+    python scripts/generate_plots.py results/YYYY-MM-DD_HHMMSS_<GPU_TYPE>
 
 This generates 4 plots per model configuration:
     1. {model}_breakdown.png      - Operation breakdown (all operations)
@@ -47,13 +47,10 @@ BREAKDOWN_FONTSIZES = {
 # =============================================================================
 
 # Operations that wrap other operations (not leaf nodes)
+# Note: eSEN "message passing N" entries are matched dynamically via regex below
 WRAPPER_OPERATIONS = {
     "eSEN::model_forward",
     "forward",
-    "message passing 0",
-    "message passing 1",
-    "message passing 2",
-    "message passing 3",
     # MACE intermediate wrappers (GPU time attributed to children)
     "MACE::Interaction::forward",
     "MACE::interaction_0",
@@ -64,6 +61,11 @@ WRAPPER_OPERATIONS = {
     "MACE::ProductBasis",
 }
 
+# Regex pattern for dynamically matching wrapper operations
+WRAPPER_PATTERNS = [
+    r"^message passing \d+$",  # eSEN message passing layers (variable count)
+]
+
 # Patterns for grouping similar operations
 GROUPING_PATTERNS = [
     # SevenNet patterns
@@ -73,9 +75,8 @@ GROUPING_PATTERNS = [
     (r"SevenNet::(\d+)_equivariant_gate", "SevenNet::equivariant_gate"),
     (r"SevenNet::(\d+)_self_connection_intro", "SevenNet::self_connection_intro"),
     (r"SevenNet::(\d+)_self_connection_outro", "SevenNet::self_connection_outro"),
-    (r"SevenNet::(\d+)_self_interaction_1", "SevenNet::self_interaction_1"),
     # MACE patterns
-    (r"message passing (\d+)", "MACE::message_passing"),
+    (r"message passing (\d+)", "eSEN::message_passing"),
     (r"MACE::interaction_(\d+)", "MACE::interaction"),
     (r"MACE::product_(\d+)", "MACE::product"),
 ]
@@ -98,7 +99,12 @@ KERNEL_CATEGORIES = {
 
 def is_leaf_operation(op_name: str) -> bool:
     """Check if operation is a leaf (not a wrapper)."""
-    return op_name not in WRAPPER_OPERATIONS
+    if op_name in WRAPPER_OPERATIONS:
+        return False
+    for pattern in WRAPPER_PATTERNS:
+        if re.match(pattern, op_name):
+            return False
+    return True
 
 
 def group_operation_name(name: str) -> str:
@@ -411,14 +417,14 @@ def plot_kernel_breakdown(trace_path: Path, title: str, output_path: Path):
     # Compute gpu_user_annotation total duration per grouped operation
     ops_ann_dur = defaultdict(float)
     for a in gpu_annotations:
-        if a["name"] not in WRAPPER_OPERATIONS and "ProfilerStep" not in a["name"]:
+        if is_leaf_operation(a["name"]) and "ProfilerStep" not in a["name"]:
             grouped = group_operation_name(a["name"])
             ops_ann_dur[grouped] += a["dur"]
 
     # Count how many original operations were grouped (from gpu_user_annotation)
     op_counts = defaultdict(int)
     for a in gpu_annotations:
-        if a["name"] not in WRAPPER_OPERATIONS and "ProfilerStep" not in a["name"]:
+        if is_leaf_operation(a["name"]) and "ProfilerStep" not in a["name"]:
             grouped = group_operation_name(a["name"])
             op_counts[grouped] += 1
     
@@ -438,7 +444,7 @@ def plot_kernel_breakdown(trace_path: Path, title: str, output_path: Path):
 
     # Get top operations sorted by gpu_user_annotation duration (matches summary.json)
     filtered_ops = {k: v for k, v in ops_to_kernels.items() 
-                    if k not in WRAPPER_OPERATIONS
+                    if is_leaf_operation(k)
                     and "ProfilerStep" not in k
                     and not k.startswith("barrier_")}
     # Sort by annotation duration (= summary.json gpu_time_ms) for consistency

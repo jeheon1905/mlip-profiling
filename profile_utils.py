@@ -1,7 +1,7 @@
 """
 Common profiling utilities for MLIP Profiling.
 
-Shared utilities between profile_esen.py and profile_mace.py.
+Shared utilities used by profile_mlip.py.
 Follows fairchem's uma_speed_benchmark.py methodology.
 """
 

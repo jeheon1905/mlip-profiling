@@ -52,21 +52,10 @@ The cueq crossover for MACE is between 108 and 500 atoms.
 ![eSEN 500 atoms pie](plots/esen_e3nn_esen-sm_500atoms_pie.png)
 ![eSEN 500 atoms kernels](plots/esen_e3nn_esen-sm_500atoms_kernels.png)
 
-::: notes
-compute_forces (autograd backward): 53.4% — Gemm + Elementwise kernels in reverse pass.
-SO2Conv (4 layers aggregated): 32.6% — Scatter/Gather for message aggregation + Gemm.
-generate_graph (GPU, nvalchemiops): 5.6% — stays flat at ~11ms regardless of system size.
-Scaling: SO2Conv grows 14.3→171.8ms (12x for 12.7x atoms) — near-linear.
-:::
-
-## eSEN operation analysis at 500 atoms
-
-- `compute_forces` (autograd backward): **53.4%** — Gemm + Elementwise kernels in reverse pass
-- `SO2Conv` (4 layers aggregated): **32.6%** — Scatter/Gather for message aggregation + Gemm
-- `generate_graph` (GPU, nvalchemiops): **5.6%** — stays flat at ~11 ms regardless of system size
-- `obtain rotmat/wigner`: **3.2%** — pre-computed rotational features
-- Scaling: SO2Conv grows 14.3→171.8 ms (12× for 12.7× atoms); graph gen stays ~11 ms
-- No cueq support → all tensor products use e3nn; backward pass is monolithic (autograd.grad)
+- `compute_forces` (backward): **53.4%** — Gemm + Elementwise kernels
+- `SO2Conv` (×4): **32.6%** — Scatter/Gather + Gemm
+- `generate_graph` (GPU): **5.6%** — flat ~11 ms at all sizes
+- SO2Conv 14.3→171.8 ms (12× for 12.7× atoms); no cueq support
 
 ::: notes
 eSEN's architectural advantage: GPU graph generation stays constant.
@@ -74,48 +63,31 @@ But without cueq support, the backward pass can't be accelerated.
 The autograd backward traverses the entire computation graph in one call.
 :::
 
-## MACE e3nn vs cueq: CPU graph generation becomes the bottleneck
+## MACE: cueq shifts the bottleneck from GPU compute to CPU graph gen
 
 ![MACE e3nn 500 atoms pie](plots/mace_e3nn_mace-mp-medium_500atoms_pie.png)
 ![MACE cueq 500 atoms pie](plots/mace_cueq_mace-mp-medium_500atoms_pie.png)
 
-::: notes
-Same model, same input. cueq cut compute_forces 60→20ms and message_passing 17→1.6ms.
-But generate_graph stayed at 16ms (CPU). It went from 14% to 33%. Amdahl's law in action.
-:::
-
-## MACE per-operation speedup with cuEquivariance (500 atoms)
-
-- `compute_forces`: 60.0 → 20.1 ms (**3.0×**) — from 55.8% to 41.7% of leaf total
-- `message_passing`: 17.2 → 1.6 ms (**10.6×**) — from 16.0% to 3.4%
-- `SymmetricContraction`: 10.8 → 3.5 ms (**3.1×**) — from 10.1% to 7.2%
-- `generate_graph` (CPU): 14.9 → 15.6 ms (**unchanged**) — from 13.9% to **32.5%**
-- At 1,372 atoms: compute_forces **7.94×**, message_passing **16.80×**, generate_graph ~1.02×
-- **Amdahl's law**: unaccelerated CPU graph gen is now the single largest bottleneck
+- `compute_forces`: 60→20 ms (**3.0×**); `message_passing`: 17→1.6 ms (**10.6×**)
+- `SymmetricContraction`: 10.8→3.5 ms (**3.1×**)
+- `generate_graph` (CPU): 15→16 ms — from 14% to **33%** of traced time
+- At 1,372 atoms: backward **7.94×**, msg_pass **16.80×**, graph ~1.02×
 
 ::: notes
 The key numerical detail. message_passing reaches an extraordinary 16.8x speedup at 1,372 atoms
 but generate_graph (matscipy, CPU) grows to 38ms and limits overall end-to-end speedup.
+Amdahl's law: unaccelerated CPU graph gen is now the single largest bottleneck.
 :::
 
-## SevenNet e3nn vs cueq: force_output speedup grows with system size
+## SevenNet: largest cueq benefit — force_output 1.9× to 6.6×
 
 ![SevenNet e3nn 500 atoms pie](plots/sevenn_e3nn_7net-0_500atoms_pie.png)
 ![SevenNet cueq 500 atoms pie](plots/sevenn_cueq_7net-0_500atoms_pie.png)
 
-::: notes
-force_output drops 53→28ms (1.9x) at 500 atoms. generate_graph rises from 10% to 16%.
-At 2,916 atoms, force_output speedup reaches 6.6x, convolution 7.5x, overall 4.0x.
-:::
-
-## SevenNet per-operation speedup with cuEquivariance (500 atoms)
-
-- `force_output`: 53.3 → 28.4 ms (**1.88×**) — from 63.3% to 52.5% of leaf total
-- `convolution` (×5): 13.8 → 8.0 ms (**1.72×**) — from 16.3% to 14.8%
-- `generate_graph` (CPU): 8.5 → 8.4 ms (**unchanged**) — from 10.1% to **15.5%**
-- `equivariant_gate` (×5): 3.3 → 3.0 ms (1.12×) — from 4.0% to 5.5%
-- At 2,916 atoms: force_output **6.61×** (191→29 ms), convolution **7.5×**, overall **4.00×**
-- Graph gen scales linearly on CPU: 2.1→33.7 ms (3%→12% of leaf total)
+- `force_output`: 53→28 ms (**1.88×**); `convolution` (×5): 14→8 ms (**1.72×**)
+- `generate_graph` (CPU): 8.5→8.4 ms — from 10% to **16%** of traced time
+- At 2,916 atoms: force_output **6.61×**, convolution **7.5×**, overall **4.00×**
+- Graph gen scales linearly: 2.1→33.7 ms (3%→12% of leaf total)
 
 ::: notes
 SevenNet shows the clearest scaling story. At 500 atoms speedups are modest (1.7–1.9x)
@@ -123,25 +95,15 @@ but at 2,916 atoms they reach 6.6x for backward and 7.5x for convolutions.
 The smallest model (0.8M params) delivers the best large-system throughput with cueq.
 :::
 
-## Kernel-level view: cueq replaces Gemm/Scatter with fused TP kernels
+## GPU pipeline starvation: cueq kernels outrun autograd dispatch
 
 ![MACE e3nn kernels 500 atoms](plots/mace_e3nn_mace-mp-medium_500atoms_kernels.png)
 ![MACE cueq kernels 500 atoms](plots/mace_cueq_mace-mp-medium_500atoms_kernels.png)
 
-::: notes
-e3nn: Gemm (ampere_sgemm, cutlass) + Scatter/Gather + Elementwise dominate GPU time.
-cueq: segmented_polynomial kernels (cuEq TP) replace much of Gemm/Scatter.
-Note the large Idle/Overhead (grey) in cueq — GPU pipeline starvation.
-:::
-
-## GPU pipeline starvation: cueq kernels outrun Python autograd dispatch
-
-- **e3nn kernels**: 100–240 μs each → GPU execution hides CPU autograd dispatch overhead
-- **cueq kernels**: 6–36 μs each → GPU idles ~40 μs between launches waiting for CPU
-- MACE backward gap: 0.7 ms (e3nn) → **15.0 ms** (cueq); avg inter-kernel gap 1.2 → 41 μs
-- SevenNet backward gap: 17.3 ms → **24.1 ms**; avg kernel 28 μs → 6 μs
-- **Root cause**: Python autograd dispatch ~40 μs/op can't keep up with <36 μs kernels
-- At 1,372 atoms gap fraction improves (MACE 75%→35%) as per-kernel work grows
+- **e3nn**: 100–240 μs/kernel → GPU hides CPU dispatch overhead
+- **cueq**: 6–36 μs/kernel → GPU idles ~40 μs between launches
+- MACE backward gap: 0.7 ms (e3nn) → **15.0 ms** (cueq)
+- At 1,372 atoms gap fraction improves (75%→35%) as kernels get more work
 
 ::: notes
 The kernel breakdown reveals WHY cueq has diminishing returns at small sizes.

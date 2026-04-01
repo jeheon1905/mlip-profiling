@@ -1,0 +1,33 @@
+% Image size control (0.6 = 60% of line width)
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{0.7\linewidth}
+\def\maxheight{0.7\textheight}
+\makeatother
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+
+% Long table line wrapping
+\usepackage{longtable,booktabs,array}
+\usepackage{calc}
+\usepackage{tabularx}
+
+% Code block line wrapping
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+
+% Float placement improvement
+\usepackage{float}
+\floatplacement{figure}{H}
+
+% Horizontal rule styling
+\usepackage{xcolor}
+\renewcommand{\rule}[2]{\textcolor{gray!40}{\hrulefill}}
+
+% Hyperlink styling (blue links)
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}

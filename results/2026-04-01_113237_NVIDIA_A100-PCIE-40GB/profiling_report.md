@@ -25,10 +25,10 @@ Performance profiling of Machine Learning Interatomic Potential (MLIP) models us
 
 ## Table of Contents
 
-1. [Profiling Methodology](#1-profiling-methodology)
-2. [Tested MLIP Models](#2-tested-mlip-models)
-3. [Operation Breakdown Details](#3-operation-breakdown-details)
-4. [Profiling Results & Analysis](#4-profiling-results--analysis)
+1. [Profiling Methodology](#profiling-methodology)
+2. [Tested MLIP Models](#tested-mlip-models)
+3. [Operation Breakdown Details](#operation-breakdown-details)
+4. [Profiling Results & Analysis](#profiling-results-analysis)
 
 ---
 
@@ -36,7 +36,7 @@ Performance profiling of Machine Learning Interatomic Potential (MLIP) models us
 
 ### 1.1 PyTorch Profiler Overview
 
-PyTorch Profiler traces both CPU and GPU activity during model execution. It captures:
+[PyTorch Profiler](https://pytorch.org/docs/stable/profiler.html) traces both CPU and GPU activity during model execution. It captures:
 
 - **CPU operators**: Python-level function calls, ATen operators, autograd operations
 - **CUDA kernels**: GPU kernel launches, memory operations, synchronization
@@ -49,8 +49,8 @@ The profiler outputs a **Chrome Trace** (JSON), which can be visualized in [Perf
 We follow fairchem's `uma_speed_benchmark.py` methodology:
 
 ```
-|←  wait (5)  →|←  warmup (5)  →|←  active (5)  →|
-                                  ← traces recorded →
+|←  wait (5)  →|←  warmup (5)  →|←    active (5)   →|
+                                 ← traces recorded →
 ```
 
 - **Wait** (5 steps): Execute without profiling overhead — stabilize GPU state
@@ -120,16 +120,17 @@ However, they differ significantly in architecture, graph construction strategy,
 | | eSEN | MACE | SevenNet |
 |---|---|---|---|
 | **Architecture** | SO(2)-equivariant convolution | Higher-order message passing with symmetric contraction | E(3)-equivariant with tensor product convolution |
+| **Variants** | esen-sm-conserving-all-omol | mace-mp-0 medium | 7net-0 |
 | **Parameters** | 6.3M | 4.7M | 0.8M |
 | **Cutoff Radius** | 6.0 Å | 6.0 Å | 5.0 Å |
 | **Graph Generation** | GPU (nvalchemiops) | CPU (matscipy) | CPU (ASE/numpy) |
 | **Message Passing Layers** | 4 (SO2Conv) | 2 (Interaction + SymmetricContraction) | 5 (Convolution + Gate) |
 | **Force Computation** | autograd.grad | autograd.grad | autograd.grad |
-| **Backends** | e3nn only | e3nn / cuEquivariance / OpenEquivariance | e3nn / cuEquivariance / FlashTP / OpenEquivariance |
+| **Backends** | [e3nn](https://e3nn.org) only | e3nn / [cuEquivariance](https://github.com/NVIDIA/cuEquivariance) / OpenEquivariance | e3nn / cuEquivariance / FlashTP / OpenEquivariance |
 
 ### 2.2 eSEN (fairchem)
 
-eSEN (Equivariant Scalable Energy Network) from Meta's fairchem uses SO(2)-equivariant convolutions (eSCN-style). Key characteristics:
+eSEN (Equivariant Scalable Energy Network) from Meta's [fairchem](https://github.com/FAIR-Chem/fairchem) uses SO(2)-equivariant convolutions (eSCN-style). Key characteristics:
 
 - **Graph construction on GPU**: Uses `nvalchemiops` for neighbor list construction, avoiding CPU-GPU data transfer
 - **4 message passing layers**: Each layer contains SO2Conv + edgewise + atomwise sub-operations
@@ -138,9 +139,9 @@ eSEN (Equivariant Scalable Energy Network) from Meta's fairchem uses SO(2)-equiv
 
 ### 2.3 MACE
 
-MACE (Multi Atomic Cluster Expansion) uses higher-order equivariant message passing with a unique SymmetricContraction that captures many-body interactions:
+[MACE](https://github.com/ACEsuit/mace) (Multi Atomic Cluster Expansion) uses higher-order equivariant message passing with a unique SymmetricContraction that captures many-body interactions:
 
-- **Graph construction on CPU**: `matscipy`-based neighbor list, executed on CPU before transfer to GPU
+- **Graph construction on CPU**: [matscipy](https://github.com/libAtoms/matscipy)-based neighbor list, executed on CPU before transfer to GPU
 - **2 interaction layers**: Each layer includes linear_up → conv_weights → message_passing → skip_tp, followed by ProductBasis → SymmetricContraction
 - **SymmetricContraction**: A distinctive operation absent in other models — compresses high-order tensor products to invariant features
 - **L_max=1**: The medium variant uses L_max=1 (vs. L_max=0 for small), enabling non-trivial equivariant tensor products that cuEquivariance can accelerate
@@ -148,7 +149,7 @@ MACE (Multi Atomic Cluster Expansion) uses higher-order equivariant message pass
 
 ### 2.4 SevenNet
 
-SevenNet (Scalable E(3)-Equivariant Network) from SNU uses standard tensor product convolutions with self-interaction layers:
+[SevenNet](https://github.com/MDIL-SNU/SevenNet) (Scalable E(3)-Equivariant Network) from SNU uses standard tensor product convolutions with self-interaction layers:
 
 - **Graph construction on CPU**: ASE/numpy-based neighbor list
 - **5 convolution layers**: Each includes self_connection_intro → self_interaction_1 → convolution → self_interaction_2 → self_connection_outro → equivariant_gate
@@ -244,6 +245,7 @@ The **kernel breakdown plots** show the proportion of GPU time in each category,
 | Others (edge embedding, edgewise, data prep, ...) | ~9.8 | ~5.2% |
 
 ![eSEN e3nn 500 atoms pie chart](plots/esen_e3nn_esen-sm_500atoms_pie.png)
+
 ![eSEN e3nn 500 atoms kernel breakdown](plots/esen_e3nn_esen-sm_500atoms_kernels.png)
 
 At 500 atoms, force computation (`autograd.grad`) and SO2Conv together account for 86% of leaf traced time. The kernel breakdown reveals that `compute_forces` is dominated by **Gemm** (matrix multiplication) and **Elementwise** kernels from the backward pass, while SO2Conv's GPU time is split between **Scatter/Gather** operations (message aggregation) and **Gemm** (linear layers within convolutions). Graph generation on GPU remains nearly constant (~11 ms) regardless of system size.
@@ -261,6 +263,7 @@ At 500 atoms, force computation (`autograd.grad`) and SO2Conv together account f
 | Others (embeddings, conv_weights, skip_tp, ...) | ~4.6 | ~4.3% |
 
 ![MACE e3nn 500 atoms pie chart](plots/mace_e3nn_mace-mp-medium_500atoms_pie.png)
+
 ![MACE e3nn 500 atoms kernel breakdown](plots/mace_e3nn_mace-mp-medium_500atoms_kernels.png)
 
 MACE's profile at 500 atoms is split between GPU compute (force + equivariant operations) and CPU graph generation. The kernel breakdown shows that `compute_forces` is primarily **Gemm** kernels, while `message_passing` uses **Scatter/Gather** for neighborhood aggregation and **Gemm** for linear projections. `SymmetricContraction` is heavily **Elementwise** — reflecting the many-body contraction operations. `generate_graph` (matscipy, CPU) shows minimal GPU kernel activity in the kernel plot, as its compute runs entirely on CPU.
@@ -278,6 +281,7 @@ MACE's profile at 500 atoms is split between GPU compute (force + equivariant op
 | Others (self_interaction, edge_embedding, ...) | ~5.4 | ~6.4% |
 
 ![SevenNet e3nn 500 atoms pie chart](plots/sevenn_e3nn_7net-0_500atoms_pie.png)
+
 ![SevenNet e3nn 500 atoms kernel breakdown](plots/sevenn_e3nn_7net-0_500atoms_kernels.png)
 
 SevenNet's force computation dominates at 63% of leaf traced time. The kernel breakdown shows `force_output` is almost entirely **Gemm** and **Elementwise** kernels from the autograd backward pass. The 5 `convolution` layers are split between **Scatter/Gather** (tensor product neighborhood aggregation) and **Gemm** (linear transformations). Graph generation (10.1%, CPU) grows as a fraction compared to 108 atoms (3%), as CPU graph construction scales linearly with system size while GPU operations scale more favorably.
@@ -352,6 +356,7 @@ cuEquivariance replaces the standard e3nn tensor product operations with NVIDIA-
 | Others (embeddings, conv_weights, skip_tp, ...) | ~7.3 | ~15.2% |
 
 ![MACE cueq 500 atoms pie chart](plots/mace_cueq_mace-mp-medium_500atoms_pie.png)
+
 ![MACE cueq 500 atoms kernel breakdown](plots/mace_cueq_mace-mp-medium_500atoms_kernels.png)
 
 Compared to e3nn, the most striking change is `generate_graph` rising from 13.9% to **32.5%** of leaf total — not because graph generation slowed down, but because GPU operations became much faster under cueq. `compute_forces` shrank from 60.0 ms to 20.1 ms (3.0x), and `message_passing` from 17.2 ms to 1.6 ms (10.6x). The kernel breakdown shows the emergence of **cuEq TP** kernels (`segmented_polynomial`) replacing much of the Gemm/Elementwise work in the tensor product operations. CPU-bound `generate_graph` is now the single largest bottleneck by fraction.
@@ -367,6 +372,7 @@ Compared to e3nn, the most striking change is `generate_graph` rising from 13.9%
 | Others (self_interaction, edge_embedding, ...) | ~6.3 | ~11.7% |
 
 ![SevenNet cueq 500 atoms pie chart](plots/sevenn_cueq_7net-0_500atoms_pie.png)
+
 ![SevenNet cueq 500 atoms kernel breakdown](plots/sevenn_cueq_7net-0_500atoms_kernels.png)
 
 SevenNet shows a similar pattern: `force_output` drops from 53.3 ms to 28.4 ms (1.88x), while `generate_graph` rises from 10.1% to **15.5%** of leaf total. Convolution layers shrink from 13.8 ms to 8.0 ms (1.7x at 500 atoms — the larger speedups appear at bigger system sizes). The kernel breakdown reveals **cuEq TP** kernels within the convolution and gate operations, partially replacing the Scatter/Gather and Gemm patterns seen in e3nn.
@@ -443,4 +449,25 @@ sbatch scripts/run_profiling.sh
 
 # Generate plots (all structure sizes)
 python scripts/generate_plots.py results/{result_dir}
+```
+
+### D. Document Export
+
+```bash
+# PDF (from this directory)
+pandoc profiling_report.md -o profiling_report.pdf \
+  --pdf-engine=xelatex \
+  -V mainfont="FreeSerif" \
+  -V sansfont="FreeSans" \
+  -V monofont="DejaVu Sans Mono" \
+  -V geometry:"margin=2cm" \
+  -V fontsize=10pt \
+  --highlight-style=tango \
+  -H ../../pandoc/latex-header.tex
+
+# HTML (from this directory)
+pandoc profiling_report.md -o profiling_report.html \
+  --standalone \
+  --self-contained \
+  --css=../../pandoc/style.css
 ```

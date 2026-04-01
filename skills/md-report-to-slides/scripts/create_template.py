@@ -262,6 +262,63 @@ def style_two_content_layout(layout, slide_w, slide_h):
                                 t["white"], bold=True)
 
 
+def style_master_body(master):
+    """Override slide master bodyStyle so all levels use THEME sizes and fonts.
+
+    Pandoc generates body text at lvl="1" (= lvl2pPr in the master).
+    The master bodyStyle takes precedence over layout-level defRPr,
+    so we must set sizes here to get consistent 16pt body text.
+    """
+    t = THEME
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+    txStyles = master._element.find(f".//{{{ns_p}}}txStyles")
+    if txStyles is None:
+        return
+
+    body_size = int(t["content_body"].pt * 100)   # e.g. 1600
+    title_size = int(t["content_title"].pt * 100)  # e.g. 2200
+    font = t["body_font"]
+    title_font = t["title_font"]
+    color_hex = rgb_hex(t["dark_text"])
+
+    # --- bodyStyle: set all 9 levels to content_body size ---
+    bodyStyle = txStyles.find(f"{{{ns_p}}}bodyStyle")
+    if bodyStyle is not None:
+        for i in range(1, 10):
+            lvl = bodyStyle.find(f"{{{ns_a}}}lvl{i}pPr")
+            if lvl is not None:
+                defRPr = lvl.find(f"{{{ns_a}}}defRPr")
+                if defRPr is not None:
+                    defRPr.set("sz", str(body_size))
+                    # Update font
+                    for tag in ("latin", "ea", "cs"):
+                        el = defRPr.find(f"{{{ns_a}}}{tag}")
+                        if el is not None:
+                            el.set("typeface", font)
+                    # Update color
+                    solidFill = defRPr.find(f"{{{ns_a}}}solidFill")
+                    if solidFill is not None:
+                        defRPr.remove(solidFill)
+                    solidFill = etree.SubElement(defRPr, f"{{{ns_a}}}solidFill")
+                    srgbClr = etree.SubElement(solidFill, f"{{{ns_a}}}srgbClr")
+                    srgbClr.set("val", color_hex)
+
+    # --- titleStyle: set level 1 to content_title size ---
+    titleStyle = txStyles.find(f"{{{ns_p}}}titleStyle")
+    if titleStyle is not None:
+        lvl1 = titleStyle.find(f"{{{ns_a}}}lvl1pPr")
+        if lvl1 is not None:
+            defRPr = lvl1.find(f"{{{ns_a}}}defRPr")
+            if defRPr is not None:
+                defRPr.set("sz", str(title_size))
+                for tag in ("latin", "ea", "cs"):
+                    el = defRPr.find(f"{{{ns_a}}}{tag}")
+                    if el is not None:
+                        el.set("typeface", title_font)
+
+
 def create_template(output_path: Path):
     ref_path = extract_pandoc_reference()
     prs = Presentation(str(ref_path))
@@ -269,6 +326,10 @@ def create_template(output_path: Path):
 
     slide_w = prs.slide_width
     slide_h = prs.slide_height
+
+    # Style each slide master's bodyStyle/titleStyle first (font size inheritance root)
+    for master in prs.slide_masters:
+        style_master_body(master)
 
     # Style each slide layout by name
     for master in prs.slide_masters:

@@ -1,6 +1,7 @@
 # MLIP Profiling Report
 
 Performance profiling of Machine Learning Interatomic Potential (MLIP) models using PyTorch Profiler.
+Source code and profiling scripts are available at [github.com/jeheon1905/mlip-profiling](https://github.com/jeheon1905/mlip-profiling).
 
 **Environment**
 
@@ -15,8 +16,8 @@ Performance profiling of Machine Learning Interatomic Potential (MLIP) models us
 
 | Model | Variant | Parameters | Backend(s) |
 |-------|---------|-----------|------------|
-| eSEN | esen-sm-conserving-all-omol | 6.3M | e3nn |
-| MACE | mace-mp-0 medium | 4.7M | e3nn, cuEquivariance |
+| eSEN | esen-sm-conserving-all-omol | 6.3M | [e3nn](https://e3nn.org) |
+| MACE | mace-mp-0 medium | 4.7M | e3nn, [cuEquivariance](https://github.com/NVIDIA/cuEquivariance) |
 | SevenNet | 7net-0 | 0.8M | e3nn, cuEquivariance |
 
 **Benchmark System**: Cu FCC supercells — 108, 500, 1,372, 2,916 atoms
@@ -126,7 +127,7 @@ However, they differ significantly in architecture, graph construction strategy,
 | **Graph Generation** | GPU (nvalchemiops) | CPU (matscipy) | CPU (ASE/numpy) |
 | **Message Passing Layers** | 4 (SO2Conv) | 2 (Interaction + SymmetricContraction) | 5 (Convolution + Gate) |
 | **Force Computation** | autograd.grad | autograd.grad | autograd.grad |
-| **Backends** | [e3nn](https://e3nn.org) only | e3nn / [cuEquivariance](https://github.com/NVIDIA/cuEquivariance) / OpenEquivariance | e3nn / cuEquivariance / FlashTP / OpenEquivariance |
+| **Backends** | e3nn only | e3nn / cuEquivariance / OpenEquivariance | e3nn / cuEquivariance / FlashTP / OpenEquivariance |
 
 ### 2.2 eSEN (fairchem)
 
@@ -442,6 +443,8 @@ Cross-model:
 - `comparison_speedup.png` — CuEq speedup vs. atom count (MACE and SevenNet)
 
 ### C. Reproduction
+
+All scripts referenced below are in the [mlip-profiling](https://github.com/jeheon1905/mlip-profiling) repository. Clone the repo and follow the environment setup in `README.md` before running.
 
 ```bash
 # Run profiling (SLURM)

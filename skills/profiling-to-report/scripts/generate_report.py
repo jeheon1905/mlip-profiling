@@ -335,6 +335,7 @@ def generate_report(results_dir: Path, output_path: Path, skip_traces: bool = Fa
     w("# MLIP Profiling Report")
     w()
     w("Performance profiling of Machine Learning Interatomic Potential (MLIP) models using PyTorch Profiler.")
+    w("Source code and profiling scripts are available at [github.com/jeheon1905/mlip-profiling](https://github.com/jeheon1905/mlip-profiling).")
     w()
 
     # Environment table
@@ -351,14 +352,37 @@ def generate_report(results_dir: Path, output_path: Path, skip_traces: bool = Fa
     # Tested Models table
     w("**Tested Models**")
     w()
-    w("| Model | Variant | Backend(s) |")
-    w("|-------|---------|------------|")
+    w("| Model | Variant | Parameters | Backend(s) |")
+    w("|-------|---------|-----------|------------|")
+    # Backend display names with links on first mention
+    _backend_links = {
+        "e3nn": "[e3nn](https://e3nn.org)",
+        "cueq": "[cuEquivariance](https://github.com/NVIDIA/cuEquivariance)",
+    }
+    _linked_backends: set[str] = set()
     for model_type, type_configs in sorted(by_type.items()):
         backends = sorted(set(c.backend for c in type_configs))
         names = sorted(set(c.model_name for c in type_configs))
         type_label = {"esen": "eSEN", "mace": "MACE", "sevenn": "SevenNet"}.get(model_type, model_type)
+        # Get parameter count from first config's model_info
+        params = ""
+        for c in type_configs:
+            mi = c.raw.get("model_info", {})
+            p = mi.get("num_parameters")
+            if p:
+                params = f"{p / 1e6:.1f}M"
+                break
+        # Format backends with links (first mention only)
+        fmt_backends = []
+        for b in backends:
+            display = {"e3nn": "e3nn", "cueq": "cuEquivariance"}.get(b, b)
+            if b in _backend_links and b not in _linked_backends:
+                fmt_backends.append(_backend_links[b])
+                _linked_backends.add(b)
+            else:
+                fmt_backends.append(display)
         for name in names:
-            w(f"| {type_label} | {name} | {', '.join(backends)} |")
+            w(f"| {type_label} | {name} | {params} | {', '.join(fmt_backends)} |")
     w()
 
     atoms_str = ", ".join(f"{a:,}" for a in all_atoms)
@@ -732,6 +756,8 @@ def generate_report(results_dir: Path, output_path: Path, skip_traces: bool = Fa
     w()
 
     w("### C. Reproduction")
+    w()
+    w("All scripts referenced below are in the [mlip-profiling](https://github.com/jeheon1905/mlip-profiling) repository. Clone the repo and follow the environment setup in `README.md` before running.")
     w()
     w("```bash")
     w("# Run profiling (SLURM)")

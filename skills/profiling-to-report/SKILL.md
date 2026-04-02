@@ -72,10 +72,11 @@ For `## 4. Profiling Results & Analysis`, the anchor is `#profiling-results-anal
 
 Add external links for key tools and projects on first mention:
 
+- **Project repo**: Link `[mlip-profiling](https://github.com/jeheon1905/mlip-profiling)` in the introduction (after the opening sentence) and in Appendix C (before reproduction commands)
 - **PyTorch Profiler**: `[PyTorch Profiler](https://pytorch.org/docs/stable/profiler.html)`
 - **Perfetto**: `[Perfetto](https://ui.perfetto.dev)`
 - **Model repos**: Link each model name to its GitHub repo on first mention in Section 2 (e.g., `[MACE](https://github.com/ACEsuit/mace)`, `[SevenNet](https://github.com/MDIL-SNU/SevenNet)`, `[fairchem](https://github.com/FAIR-Chem/fairchem)`)
-- **Libraries**: Link matscipy, e3nn, cuEquivariance on first mention
+- **Libraries**: Link [e3nn](https://e3nn.org) and [cuEquivariance](https://github.com/NVIDIA/cuEquivariance) in the **Tested Models** summary table (Backend column) at the top of the report — this is where they first appear
 - Do not repeat links after the first occurrence
 
 ## Section-specific guidance

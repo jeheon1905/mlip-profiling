@@ -13,6 +13,8 @@ Review the completed report against this checklist before delivering.
 - [ ] **Appendix** (A, B, C, D) present at the end — D includes pandoc export commands
 - [ ] **Section dividers** (`---`) separate major sections (after 1, 2, 3)
 - [ ] **External hyperlinks**: Key tools and model repos linked on first mention (PyTorch Profiler, Perfetto, model GitHub repos, matscipy, e3nn, cuEquivariance)
+- [ ] **Project repo link**: `mlip-profiling` GitHub URL appears in the introduction and Appendix C
+- [ ] **e3nn/cuEquivariance links**: Linked in the Tested Models summary table (Backend column), not repeated elsewhere
 
 ## Data integrity
 

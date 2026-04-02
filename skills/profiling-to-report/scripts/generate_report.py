@@ -729,33 +729,7 @@ def generate_report(results_dir: Path, output_path: Path, skip_traces: bool = Fa
     w()
     w("## Appendix")
     w()
-    w("### A. Profiling Configuration")
-    w()
-    w("```")
-    w(f"Profiler schedule: wait={prof_sched.get('wait_steps', 5)}, "
-      f"warmup={prof_sched.get('warmup_steps', 5)}, "
-      f"active={prof_sched.get('active_steps', 5)}")
-    w(f"timeit settings: number={timeit_set.get('number', 10)}, "
-      f"repeat={timeit_set.get('repeat', 5)}")
-    w("Structure: Cu FCC (periodic, cutoff=varies by model)")
-    w("Device: CUDA (single GPU)")
-    w("Synchronization: torch.cuda.synchronize() after each step")
-    w("```")
-    w()
-
-    w("### B. Generated Plot Index")
-    w()
-    w("Per model configuration:")
-    w("- `{model}_breakdown.png` — Stacked bar chart of leaf operations (effective time)")
-    w("- `{model}_pie.png` — Proportional distribution (operations <3% merged to \"Other\")")
-    w("- `{model}_kernels.png` — GPU kernel category breakdown")
-    w()
-    w("Cross-model:")
-    w("- `comparison_latency.png` — Latency vs. atom count (all configurations)")
-    w("- `comparison_speedup.png` — CuEq speedup vs. atom count (MACE and SevenNet)")
-    w()
-
-    w("### C. Reproduction")
+    w("### A. Reproduction")
     w()
     w("All scripts referenced below are in the [mlip-profiling](https://github.com/jeheon1905/mlip-profiling) repository. Clone the repo and follow the environment setup in `README.md` before running.")
     w()
@@ -769,6 +743,32 @@ def generate_report(results_dir: Path, output_path: Path, skip_traces: bool = Fa
     w("# Generate report")
     w(f"python skills/profiling-to-report/scripts/generate_report.py {results_dir}")
     w("```")
+    w()
+
+    w("### B. Profiling Configuration")
+    w()
+    w("```")
+    w(f"Profiler schedule: wait={prof_sched.get('wait_steps', 5)}, "
+      f"warmup={prof_sched.get('warmup_steps', 5)}, "
+      f"active={prof_sched.get('active_steps', 5)}")
+    w(f"timeit settings: number={timeit_set.get('number', 10)}, "
+      f"repeat={timeit_set.get('repeat', 5)}")
+    w("Structure: Cu FCC (periodic, cutoff=varies by model)")
+    w("Device: CUDA (single GPU)")
+    w("Synchronization: torch.cuda.synchronize() after each step")
+    w("```")
+    w()
+
+    w("### C. Generated Plot Index")
+    w()
+    w("Per model configuration:")
+    w("- `{model}_breakdown.png` — Stacked bar chart of leaf operations (effective time)")
+    w("- `{model}_pie.png` — Proportional distribution (operations <3% merged to \"Other\")")
+    w("- `{model}_kernels.png` — GPU kernel category breakdown")
+    w()
+    w("Cross-model:")
+    w("- `comparison_latency.png` — Latency vs. atom count (all configurations)")
+    w("- `comparison_speedup.png` — CuEq speedup vs. atom count (MACE and SevenNet)")
     w()
 
     # Write output

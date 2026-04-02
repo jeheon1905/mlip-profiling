@@ -70,9 +70,9 @@ Expected final report structure with section numbering. All sections marked `[AU
 ---
 
 ## Appendix
-### A. Profiling Configuration                                    [AUTO]
-### B. Generated Plot Index                                       [AUTO]
-### C. Reproduction                                               [AUTO]
+### A. Reproduction                                               [AUTO]
+### B. Profiling Configuration                                    [AUTO]
+### C. Generated Plot Index                                       [AUTO]
 ### D. Document Export                                            [ADD] pandoc commands for PDF/HTML
 ```
 
@@ -119,7 +119,7 @@ TOC links must use heading text **without** section numbers. Markdown renderers 
 
 Note: `&` in "Results & Analysis" is stripped → `#profiling-results-analysis`.
 
-## Appendix D template
+## Appendix D template (Document Export)
 
 ```markdown
 ### D. Document Export

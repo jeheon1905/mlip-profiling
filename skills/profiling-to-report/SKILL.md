@@ -34,7 +34,7 @@ Transform an auto-generated data report (tables and plot references) into a comp
    - Why it happens (mechanism)
    - How it scales (trend across atom counts)
    - Use [references/analysis_guide.md](references/analysis_guide.md) for interpretation patterns.
-7. **Add Appendix D** (Document Export): Include pandoc commands for PDF and HTML export. Use [references/report_structure.md](references/report_structure.md) for the template.
+7. **Add Appendix D** (Document Export): Include pandoc commands for PDF and HTML export. Use [references/report_structure.md](references/report_structure.md) for the template. Appendix order: A=Reproduction, B=Profiling Configuration, C=Generated Plot Index, D=Document Export.
 8. **Write draft file**: Save as `{results_dir}/profiling_report.md`.
 9. **Final review**: Re-read the complete report end-to-end. Validate against [references/quality_checklist.md](references/quality_checklist.md). Fix any issues found before delivering.
 
@@ -72,7 +72,7 @@ For `## 4. Profiling Results & Analysis`, the anchor is `#profiling-results-anal
 
 Add external links for key tools and projects on first mention:
 
-- **Project repo**: Link `[mlip-profiling](https://github.com/jeheon1905/mlip-profiling)` in the introduction (after the opening sentence) and in Appendix C (before reproduction commands)
+- **Project repo**: Link `[mlip-profiling](https://github.com/jeheon1905/mlip-profiling)` in the introduction (after the opening sentence) and in Appendix A (Reproduction, before commands)
 - **PyTorch Profiler**: `[PyTorch Profiler](https://pytorch.org/docs/stable/profiler.html)`
 - **Perfetto**: `[Perfetto](https://ui.perfetto.dev)`
 - **Model repos**: Link each model name to its GitHub repo on first mention in Section 2 (e.g., `[MACE](https://github.com/ACEsuit/mace)`, `[SevenNet](https://github.com/MDIL-SNU/SevenNet)`, `[fairchem](https://github.com/FAIR-Chem/fairchem)`)

@@ -421,28 +421,7 @@ At 1,372 atoms, the gap fraction improves for both models — MACE from 75% to 3
 
 ## Appendix
 
-### A. Profiling Configuration
-
-```
-Profiler schedule: wait=5, warmup=5, active=5
-timeit settings: number=10, repeat=5
-Structure: Cu FCC (periodic, cutoff=varies by model)
-Device: CUDA (single GPU)
-Synchronization: torch.cuda.synchronize() after each step
-```
-
-### B. Generated Plot Index
-
-Per model configuration (5 configs × 3–4 sizes):
-- `{model}_breakdown.png` — Stacked bar chart of leaf operations (effective time)
-- `{model}_pie.png` — Proportional distribution (operations <3% merged to "Other")
-- `{model}_kernels.png` — GPU kernel category breakdown
-
-Cross-model:
-- `comparison_latency.png` — Latency vs. atom count (all configurations)
-- `comparison_speedup.png` — CuEq speedup vs. atom count (MACE and SevenNet)
-
-### C. Reproduction
+### A. Reproduction
 
 All scripts referenced below are in the [mlip-profiling](https://github.com/jeheon1905/mlip-profiling) repository. Clone the repo and follow the environment setup in `README.md` before running.
 
@@ -453,6 +432,27 @@ sbatch scripts/run_profiling.sh
 # Generate plots (all structure sizes)
 python scripts/generate_plots.py results/{result_dir}
 ```
+
+### B. Profiling Configuration
+
+```
+Profiler schedule: wait=5, warmup=5, active=5
+timeit settings: number=10, repeat=5
+Structure: Cu FCC (periodic, cutoff=varies by model)
+Device: CUDA (single GPU)
+Synchronization: torch.cuda.synchronize() after each step
+```
+
+### C. Generated Plot Index
+
+Per model configuration (5 configs × 3–4 sizes):
+- `{model}_breakdown.png` — Stacked bar chart of leaf operations (effective time)
+- `{model}_pie.png` — Proportional distribution (operations <3% merged to "Other")
+- `{model}_kernels.png` — GPU kernel category breakdown
+
+Cross-model:
+- `comparison_latency.png` — Latency vs. atom count (all configurations)
+- `comparison_speedup.png` — CuEq speedup vs. atom count (MACE and SevenNet)
 
 ### D. Document Export
 

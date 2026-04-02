@@ -10,10 +10,10 @@ Review the completed report against this checklist before delivering.
 - [ ] **TOC anchors correct**: Links use heading text without section numbers (e.g., `#profiling-methodology` not `#1-profiling-methodology`)
 - [ ] **Sections 1-3** (Methodology, Models, Operation Details) appear before data sections
 - [ ] **Section 4** contains all auto-generated tables and plot references
-- [ ] **Appendix** (A, B, C, D) present at the end — D includes pandoc export commands
+- [ ] **Appendix** (A, B, C, D) present at the end — A=Reproduction, B=Profiling Config, C=Plot Index, D=Document Export
 - [ ] **Section dividers** (`---`) separate major sections (after 1, 2, 3)
 - [ ] **External hyperlinks**: Key tools and model repos linked on first mention (PyTorch Profiler, Perfetto, model GitHub repos, matscipy, e3nn, cuEquivariance)
-- [ ] **Project repo link**: `mlip-profiling` GitHub URL appears in the introduction and Appendix C
+- [ ] **Project repo link**: `mlip-profiling` GitHub URL appears in the introduction and Appendix A (Reproduction)
 - [ ] **e3nn/cuEquivariance links**: Linked in the Tested Models summary table (Backend column), not repeated elsewhere
 
 ## Data integrity

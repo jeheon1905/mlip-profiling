@@ -1,0 +1,12 @@
+reveal.js 5.1.0
+Source: https://github.com/hakimel/reveal.js/releases/tag/5.1.0
+License: MIT (see https://github.com/hakimel/reveal.js/blob/master/LICENSE)
+
+Bundled subset:
+  dist/reveal.{js,css}, dist/reset.css
+  dist/theme/{white,simple}.css + theme/fonts/source-sans-pro/
+  plugin/notes/   — speaker notes
+  plugin/highlight/ — code syntax highlighting (highlight.js + monokai/zenburn themes)
+
+Excluded plugins (add later if needed):
+  markdown, math, search, zoom

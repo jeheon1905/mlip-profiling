@@ -41,10 +41,35 @@ Use a sequence like:
 
 ## Slide count guidance
 
-- Short report: 6 to 8 slides
-- Typical report: 8 to 12 slides
-- Long or data-heavy report: 10 to 14 slides, only if the narrative truly needs it
+| Report type | Target range | Notes |
+|---|---|---|
+| Short report (≤ 3 main sections) | 6 – 8 | |
+| Typical report (3 – 5 main sections) | 8 – 14 | |
+| Long or data-heavy (5+ sections) | 14 – 20 | Common for benchmark and profiling reports |
+| Multi-model / multi-phase benchmark | 1 – 2 slides per model per analysis phase | Do not merge subjects to hit a count target |
+
+### Benchmark / profiling report shape
+
+For reports that compare multiple ML models or system configurations, use this expanded sequence:
+
+1. Main takeaway / headline finding (surface it early, before setup)
+2. Hardware and environment (table)
+3. Model or subject comparison (table — one column per subject)
+4. Measurement methodology (table — schedule, metrics, definitions)
+5. Metric definition or classification scheme (table)
+6. Primary results table (table-only — all configurations, all sizes)
+7. Throughput or secondary metric table (table-only)
+8. Scaling charts (image+text — one takeaway per visual)
+9. Per-subject baseline analysis (one image+text slide per subject)
+10. Acceleration or variant analysis (one image+text slide per subject per backend)
+11. Per-operation speedup tables (one table slide per subject)
+12. Cross-cutting comparison (graph gen, kernel analysis, etc.) (table or image+text)
+13. Root cause / mechanism analysis (image+text)
+14. Inter-kernel or trace-level data (table)
+15. Recommendations / next steps (bullets)
+
+These are starting estimates, not hard ceilings. Let the source content drive the count: if the report has 6 result subsections, produce 6 result slides.
 
 ## Prioritization rule
 
-If content is too long, cut detail before shrinking slide density.
+If content is too long, cut prose and background detail — not entire report sections. Omitting a whole section to hit a slide count target is always wrong. Every top-level (`##`) section of the source report must map to at least one slide (Appendix sections may be omitted).

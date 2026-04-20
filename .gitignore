@@ -54,3 +54,9 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code local settings
+.claude/
+
+# Regeneratable slide template (produced by create_template.py)
+results/**/template.pptx

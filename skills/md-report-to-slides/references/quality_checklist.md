@@ -2,6 +2,20 @@
 
 Review before delivering.
 
+## Structure
+- For 6+ content slides: is a Table of Contents slide present as the second slide?
+- Does the deck include setup/environment context (hardware, software, methodology)?
+- For reports comparing multiple subjects: is a comparison table slide included?
+- For technical reports with numeric results: are data tables included alongside charts?
+- For benchmark/profiling reports specifically:
+  - Is the hardware and environment reproduced as a table slide?
+  - Is the model/subject comparison reproduced as a table slide?
+  - Is the profiling methodology (schedule, measurement method) a table slide?
+  - Is the metric definition (e.g., effective time classification) a table slide?
+  - Are **all** per-configuration latency/throughput numbers in a table slide (not just charts)?
+  - Is there a per-operation speedup table for each model or comparison pair?
+  - Is there a separate analysis slide per model per backend (not merged to reduce count)?
+
 ## Narrative
 - Does the first content slide surface the main takeaway early?
 - Does every slide have exactly one message?
@@ -10,8 +24,11 @@ Review before delivering.
 ## Slide canvas
 - Are most titles one line and sentence-style?
 - Are bullets short, parallel, and limited to 3 to 5?
-- Are heavy tables or long paragraphs removed?
+- Are tables compact (max 6 rows × 4 columns) with brief cell content?
+- Are heavy tables split into smaller tables or converted to structured bullets?
 - Are visual placeholders used only when necessary and clearly marked?
+- Do image+text slides have a full 3–5 bullets in addition to the images? (image-only and empty-bullet slides look sparse)
+- For image+text slides: are the bullets quantitative and interpretive, not just repeating the image alt text?
 
 ## Notes
 - Does the title slide include YAML notes?

@@ -55,7 +55,7 @@ def validate(text: str) -> list[str]:
         bullet_count = count_bullets(block)
         if title.lower() in GENERIC_TITLES:
             errors.append(f'generic slide title: {title}')
-        if bullet_count > 8:
+        if bullet_count > 5:
             errors.append(f'too many bullets on slide: {title} ({bullet_count})')
         if '::: notes' not in block:
             errors.append(f'missing notes block: {title}')

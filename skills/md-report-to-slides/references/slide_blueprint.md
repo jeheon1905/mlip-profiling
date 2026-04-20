@@ -36,6 +36,72 @@ Add nuance, implication, or transition.
 - Put content-slide notes in a `::: notes` block immediately after the slide content.
 - Prefer no more than 5 bullets on a slide.
 
+## Table of contents slide
+
+Add as the second slide (after the title) for decks with 6 or more content slides:
+
+```md
+## Table of Contents
+
+- **Section 1**: brief description of what is covered
+- **Section 2**: brief description
+- **Section 3**: brief description
+
+::: notes
+Brief orientation: how many sections, which is most important.
+:::
+```
+
+Keep items to 5 or fewer. Use bold to label the section name, then a colon and short description.
+
+## Table slide
+
+Use markdown tables for naturally tabular data. Keep tables short to avoid pandoc overflow:
+
+```md
+## Model Architecture Comparison
+
+| | Model A | Model B | Model C |
+|---|---|---|---|
+| **Parameter 1** | value | value | value |
+| **Parameter 2** | value | value | value |
+| **Parameter 3** | value | value | value |
+
+::: notes
+Explain the most important differences between columns.
+:::
+```
+
+Rules for tables:
+- Max 6 rows (data rows), max 4 columns per table. Wider or taller tables risk pandoc splitting the slide.
+- **Multiple tables per slide are supported**: list two markdown tables in sequence; `postprocess_slides.py` merges the pandoc-generated continuation slide back and stacks both tables vertically. Use this for thematically related data (e.g., latency + throughput, library comparison + scaling).
+- **CRITICAL**: Never put bullets and a table on the same slide. Pandoc always moves the table to a separate continuation slide with no title. Table slides must contain only tables (one or more) — no bullets.
+- On image+text slides, use structured bullet lists in the lower zone — never a table (not supported in combined layout).
+- Use `---:` for right-aligned numeric columns.
+- Bold the first-column labels in comparison tables.
+- Avoid empty cells — use `--` or `N/A` as a placeholder.
+
+### Multi-table slide
+
+```md
+## Latency (ms) and throughput (ns/day) both confirm cueq advantage
+
+| Config | 108 atoms | 500 atoms | 1,372 atoms |
+|--------|----------:|----------:|------------:|
+| **MACE e3nn** | 40.2 | 106.5 | 286.6 |
+| **MACE cueq** | 45.4 | 48.7 | 76.0 |
+
+| Config | 108 atoms | 500 atoms | 1,372 atoms |
+|--------|----------:|----------:|------------:|
+| **MACE e3nn** | 2.15 | 0.81 | 0.30 |
+| **MACE cueq** | 1.90 | 1.78 | 1.14 |
+
+::: notes
+Both tables support the same conclusion — include both because they measure different things.
+postprocess_slides.py detects the second table as a pandoc continuation orphan and stacks them.
+:::
+```
+
 ## Preferred slide types
 
 ### Insight slide

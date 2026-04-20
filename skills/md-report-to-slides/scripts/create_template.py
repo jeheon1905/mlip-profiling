@@ -45,13 +45,13 @@ THEME = {
     "title_font": "Segoe UI Semibold",
     "body_font": "Segoe UI",
     # Sizes
-    "title_slide_title": Pt(32),
-    "title_slide_subtitle": Pt(16),
+    "title_slide_title": Pt(34),
+    "title_slide_subtitle": Pt(17),
     "content_title": Pt(22),
-    "content_body": Pt(16),
+    "content_body": Pt(15),
     # Dimensions
     "header_height": Inches(1.1),
-    "accent_line_height": Pt(3),
+    "accent_line_height": Pt(5),
 }
 
 
@@ -227,9 +227,9 @@ def style_content_layout(layout, slide_w, slide_h):
                 para.alignment = PP_ALIGN.LEFT
         elif idx == 1:  # Body — below header
             ph.left = Inches(0.6)
-            ph.top = Inches(1.3)
+            ph.top = Inches(1.28)
             ph.width = int(slide_w - Inches(1.2))
-            ph.height = int(slide_h - Inches(1.6))
+            ph.height = int(slide_h - Inches(1.55))
             ph.text_frame.word_wrap = True
             for para in ph.text_frame.paragraphs:
                 style_paragraph(para, t["body_font"], t["content_body"],

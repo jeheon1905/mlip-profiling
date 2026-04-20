@@ -51,6 +51,7 @@ The examples below use short names for readability, but always resolve to `skill
 
 When the source report references or relies on images/plots, include them in slides for visual evidence:
 
+- **Scan all `![](path)` references in the source report** and include each relevant figure in slides.md. Do not silently omit figures that appear in the report.
 - Use standard markdown image syntax: `![alt text](relative/path/to/image.png)`
 - Use **relative paths** from where `slides.md` lives. The render script sets `--resource-path` automatically.
 - Prefer one image per slide with a takeaway title.
@@ -68,9 +69,13 @@ Apply a neutral style by default:
 - Keep most slides to 3 to 5 bullets.
 - Keep bullets short and parallel.
 - Prefer 2-column layouts for contrast and process/timeline layouts for sequence.
-- Avoid decorative labels, badge collections, dense dashboards, and long tables.
+- Avoid decorative labels, badge collections, and dense dashboards.
 - Put nuance and transitions into notes, not onto the slide canvas.
-- **Avoid markdown tables** — pandoc splits slides with tables when content overflows. Convert tabular data to structured bullet lists instead.
+- **Use compact tables for naturally tabular data** — comparison matrices, metric tables, configuration tables. Keep tables to max 6 rows × 4 columns with brief cell content.
+- **Multiple tables per slide are supported**: placing two (or more) markdown tables in sequence on the same slide is valid. Pandoc will split the second table to a continuation slide, but `postprocess_slides.py` merges it back and stacks the tables vertically. Use this for thematically related data sets (e.g., latency ms + throughput ns/day, library comparison + scaling data).
+- **Critical pandoc limitation (bullets + table)**: When a slide contains both bullet lists AND a markdown table, pandoc moves the table to an untitled orphan slide. To avoid orphaned tables, keep slides either table-only (one or more tables, no bullets) or bullet-only. Never mix bullets and tables on the same slide.
+- On image+text slides, use structured bullet lists instead of tables in the lower zone — mixing images and tables on the same markdown slide is not supported.
+- **Slide density**: Every content slide should feel full. Image+text slides must have 3–5 substantive bullets in addition to the image(s). Bullets must be quantitative and interpretive — not just restating alt text. Slides with only 1–2 short bullets alongside images look empty and waste canvas space.
 
 ## Validation and repair
 
@@ -139,4 +144,49 @@ Always return:
 
 If the user gives only a report file, proceed without asking for deck type. Internally apply this framing:
 
-> Infer the most likely presentation mode from the report, convert it into an 8 to 12 slide speaking-first deck, keep one message per slide, preserve only decision-relevant evidence, and include concise presenter notes for every slide.
+> Infer the most likely presentation mode from the report, convert it into an 8 to 14 slide speaking-first deck, keep one message per slide, preserve only decision-relevant evidence, and include concise presenter notes for every slide.
+
+## Table of Contents slide
+
+For presentations with 6 or more content slides, include a **Table of Contents** as the second slide (immediately after the title slide). Format as a short bullet list (max 5 items) listing section names and their focus. Each item should be one line.
+
+Example:
+```markdown
+## Table of Contents
+
+- **Section 1**: brief description
+- **Section 2**: brief description
+- **Section 3**: brief description
+```
+
+## Source section mapping
+
+Before writing a single slide, build an explicit section map. For every `##` heading in the source report, decide: which slide title will cover it, or why it is deliberately omitted (only Appendix-level material may be omitted). Write this map as a scratch list, then use it to drive the slide outline.
+
+**Default mapping rules for technical reports:**
+
+| Source section type | Slide type | Notes |
+|---|---|---|
+| Setup / hardware environment | Table slide | One row per component; include GPU, CPU, framework versions, benchmark system |
+| Methodology / measurement approach | Table slide | Capture schedule, metrics, and any important caveats in a compact table |
+| Metric definition or classification scheme | Table slide | e.g., effective-time classification, kernel category definitions |
+| Subject overview / comparison across subjects | Comparison table slide | One column per subject, rows = key attributes |
+| Per-subject analysis (per-model, per-experiment) | Image + text slide | Pie/breakdown plot(s) + 3–4 bullets; **one slide per subject per backend/phase** |
+| Quantitative results table | Table slide (table-only) | Reproduce numeric tables from report; never merge or drop rows |
+| Chart / figure | Image slide | One figure per slide with takeaway title; side-by-side for direct comparisons |
+| Root cause / mechanism analysis | Image + text slide | Kernel timeline or trace plots + interpretive bullets |
+| Speedup or performance gain summary | Table slide (table-only) | Rows = operations or configs, cols = e3nn / cueq / speedup |
+| Recommendations / next steps | Bullet slide | Max 4 bullets; lead with action verb |
+
+**Per-subject per-phase rule:** If the report analyzes N subjects (models, systems, …) each with M phases (backends, configurations, …), produce at minimum N × M analysis slides unless two subjects are explicitly identical. Never merge subjects into a single slide to reduce count.
+
+**Figure coverage rule:** Scan every `![alt](path)` reference in the source report. Every plot that illustrates a distinct result or finding must appear in `slides.md`. A plot referenced in the report but absent from slides represents missing evidence. Group plots as side-by-side only when they compare the same subject across exactly two conditions.
+
+**Quantitative table rule:** Every multi-row numeric table in the report that contains decision-relevant data (latencies, speedups, throughputs, counts, percentages) must be reproduced as a table slide. Do not paraphrase numeric tables into bullets — the numbers are the evidence.
+
+**Omission rules:** The following may be omitted without justification:
+- Appendix sections (reproduction steps, configuration dumps, document export instructions)
+- Code listings that illustrate instrumentation rather than results
+- Prose that merely restates a table or figure already included as a slide
+
+Everything else requires an explicit reason to drop.

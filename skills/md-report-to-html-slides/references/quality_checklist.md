@@ -17,9 +17,16 @@ Review before delivering.
   - Is there a separate analysis slide per model per backend (not merged to reduce count)?
 
 ## Narrative
-- Does the first content slide surface the main takeaway early?
+- Does the first content slide surface the report's own key findings early?
 - Does every slide have exactly one message?
 - Does the sequence feel like a spoken presentation rather than a written report?
+
+## Faithfulness to the source report
+- For every slide (titles, bullets, tables, notes), can you point to the specific report section the content came from?
+- Does the deck avoid inventing a "Recommendation" or "Next steps" slide if the report has none?
+- Are titles factual (section-style or direct paraphrases) rather than editorial ("decisively", "flattens", "the answer")?
+- Do speaker notes restate the report's analysis rather than promote the narrative ("lead with the answer", "end with the ask")?
+- Are all numbers and claims directly traceable to the report — no extrapolation beyond measured data?
 
 ## Slide canvas
 - Are most titles one line and sentence-style?

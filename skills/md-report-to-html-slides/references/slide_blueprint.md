@@ -43,7 +43,7 @@ The shell ships with custom CSS classes used below: `cols`, `cols-1-2`, `cols-2-
     <li><strong>Setup</strong> — hardware, models, methodology</li>
     <li><strong>Results</strong> — per-model breakdowns and speedups</li>
     <li><strong>Analysis</strong> — root causes and bottlenecks</li>
-    <li><strong>Recommendations</strong> — what to deploy next</li>
+    <li><strong>Summary of findings</strong> — the report's own key takeaways</li>
   </ul>
   <aside class="notes">
     Brief orientation: how many sections, which is most important.
@@ -219,23 +219,36 @@ Pandoc cannot do this; HTML can.
 </section>
 ```
 
-## 11. Callout / recommendation
+## 11. Summary / callout
+
+Use a callout only when the **source report itself** states a recommendation, implication, or highlighted conclusion. If the report has no such statement, use a plain summary slide that restates the report's own "Key findings" list. Do not invent deployment advice or next steps.
 
 ```html
 <section>
-  <h2>Deploy cueq for production MACE workloads above 500 atoms</h2>
-  <div class="callout good">
-    <strong>Recommendation:</strong> ship MACE-medium with `--backend cueq` as the default
-    in the eval pipeline, retain e3nn fallback for environments without
-    cuequivariance-ops-torch installed.
-  </div>
+  <h2>Summary of findings</h2>
   <ul>
-    <li>3.8× latency reduction at the most common production size (1,372 atoms)</li>
-    <li>No accuracy regression observed across 200 test structures</li>
-    <li>Install footprint: 220 MB additional CUDA libraries</li>
+    <li>Report's Key finding 1 (paraphrased directly)</li>
+    <li>Report's Key finding 2</li>
+    <li>Report's Key finding 3</li>
   </ul>
   <aside class="notes">
-    State the ask, owner, and timing here.
+    Direct restatement of the report's Key findings (Section X). The report contains no
+    Recommendations or Next steps section.
+  </aside>
+</section>
+```
+
+When the report explicitly flags an implication or next step, you may use a callout:
+
+```html
+<section>
+  <h2>Implication from Section 4.3</h2>
+  <div class="callout good">
+    <strong>Report states:</strong> "moving graph generation to GPU (e.g., using nvalchemiops
+    or similar) could yield significant speedups" — the quote is the report's own language.
+  </div>
+  <aside class="notes">
+    Callout used because this language is lifted directly from the report's Implication paragraph.
   </aside>
 </section>
 ```
@@ -257,13 +270,14 @@ python profile_mlip.py --model-type mace --model-path mace.pt \
 
 ## What to avoid
 
-- Titles like `overview`, `analysis`, `results`, `conclusion` with no takeaway.
 - More than ~6 substantive bullets per slide (consider splitting).
 - Paragraph blocks copied from the report verbatim.
-- Notes that merely repeat the bullets — notes are for *what you'd say*, not *what's on screen*.
+- Notes that merely repeat the bullets — notes should restate the report's analysis or cite the source section.
 - External CDN-loaded images or fonts (breaks offline use; the deck must work without internet).
 - Inventing numbers, plots, or speedups that are not in the source report.
 - Empty `<section>` shells (validator flags these).
+- **Editorial titles** like "X pulls ahead decisively", "Deploy Y for production", "The headline: Z". Prefer section-style titles ("X breakdown", "Latency vs atom count") or direct paraphrases of the report's own headings.
+- **Invented recommendations or next steps**. If the report has none, the deck has none.
 
 ## Why HTML lifts the PPTX restrictions
 

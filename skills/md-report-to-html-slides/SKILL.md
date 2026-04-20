@@ -47,13 +47,33 @@ python $SKILL_DIR/scripts/pack_html_slides.py path/to/slides.html --in-place
 - Treat the source markdown as a completed report, not raw notes.
 - Rebuild the content for speaking, not for reading.
 - Prefer one message per slide.
-- Use sentence-style titles that already communicate the takeaway.
-- Surface the "so what" early.
+- Surface the report's own key findings early (typically the report's own "Key observations" or "Key findings" lists).
 - Remove repetition, background detail, and appendix-style prose unless needed for the narrative.
-- Prefer structured slides over bullet walls: comparison, table, image+text, recommendation.
+- Prefer structured slides over bullet walls: comparison, table, image+text.
 - Keep only the most decision-relevant numbers.
 - If a visual is clearly needed but source data is insufficient, insert a short placeholder such as `<div class="callout warn">[visual: 3-step process needed]</div>` rather than inventing numbers.
 - Do not ask the user to classify the presentation type unless the report is genuinely ambiguous.
+
+## Faithfulness principle (strict)
+
+**The slides are a condensation of the source report, not a new document.** Everything on every slide — titles, bullets, tables, callouts, speaker notes — must be directly traceable to the source report.
+
+Do **not**:
+
+- **Invent recommendations, next steps, or action items** the report does not contain. If the report has no "Recommendations" or "Next steps" section, do not fabricate one. A "Summary of findings" slide drawn from the report's own "Key observations" or "Key findings" is the correct closing slide; a "Recommendation" slide is not.
+- **Add deployment advice, installation tips, or optimization suggestions** ("use X for production", "keep an e3nn fallback", "next optimization target: Y") unless the report states them.
+- **Editorialize titles** with words like *decisively*, *flattens*, *pulls ahead*, *the answer*, *production-ready*. Prefer factual section-style titles ("Latency vs atom count", "MACE (e3nn) — 500 atoms breakdown") or direct paraphrases of the report's headings ("Graph generation: implementation differences").
+- **Extrapolate beyond the data**. If the report does not measure MACE at 2,916 atoms e3nn, do not speculate about its "extrapolated speedup".
+- **Write speaker notes that promote the narrative** ("lead with the answer", "most important comparison", "end with the ask"). Notes should restate or paraphrase the report's own analysis — typically pointing to the specific section of the report the slide is drawn from.
+
+Do:
+
+- Prefer factual section-style titles and direct paraphrases of the report's language.
+- Use the report's own summary lists (Key observations, Key findings, Implications) as the source for summary/headline slides.
+- In speaker notes, cite the source section when useful ("From Section 4.2 of the report").
+- If a fact would strengthen the narrative but is not in the report, **drop it** rather than invent it.
+
+The test: for every slide, you should be able to point to the exact report section(s) the content came from. If you can't, the content does not belong on the slide.
 
 ## Images and plots
 
